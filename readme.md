@@ -6,7 +6,7 @@
 # 3. 编译 arm_app
 ```
     cd arm_app
-    mkdir build & cd build
+    mkdir build && cd build
     cmaker
     make
 ```
