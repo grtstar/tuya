@@ -9,6 +9,7 @@
 
 #include "tuya_cloud_com_defs.h"
 #include "tuya_iot_com_api.h"
+#include "tuya_iot_wifi_api.h"
 
 #include "robot_msg.h"
 #include "tuya_robot.h"
@@ -421,6 +422,17 @@ void TuyaComm::OnRestrictedArea(const lcm::ReceiveBuffer *rbuf, const std::strin
 void TuyaComm::OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanRecord *msg)
 {
     ReportCleanRecords(msg->recordId, msg->cleanTimeSecond/60.0 + 0.5, msg->cleanArea, MarsModeToTuya(msg->cleanMode), MarsCleanMethodToTuya((CleanMethod)msg->cleanMethod), msg->finishResult, msg->startReason);
+}
+
+void TuyaComm::OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg)
+{
+    LOGD(TAG, "Event: {}", msg->event);
+    switch (msg->event)
+    {
+    case MSG_RESET_WIFI:
+        tuya_iot_wf_gw_unactive();
+        break;
+    }
 }
 
 void TuyaComm::ReportPartsLife()

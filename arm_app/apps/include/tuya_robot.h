@@ -66,6 +66,8 @@ public:
         lcm_->subscribe("AC_Status", &TuyaComm::OnSweeperStatus, this);
         lcm_->subscribe("AC_PartsLife", &TuyaComm::OnPartsLife, this);
         lcm_->subscribe("AC_CleanInfo", &TuyaComm::OnCleanInfo, this);
+        lcm_->subscribe("Mevt", &TuyaComm::OnEvent, this);
+        lcm_->subscribe("Kevt", &TuyaComm::OnEvent, this);
     }
 
     template <class MessageType>
@@ -172,6 +174,7 @@ public:
     void OnVirtualWall(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppVirtualWall *msg);
     void OnRestrictedArea(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppRestrictedArea *msg);
     void OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanRecord *msg);
+    void OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg);
 public:
     void ReportStatus();
     void ReportMap();
