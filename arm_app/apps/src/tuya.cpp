@@ -31,17 +31,19 @@ using namespace mars_message;
 
 #define TAG "MAN"
 
-
-#define PRODUCT_ID          "tuya_pid"
-#define DEVICE_UUID         "tuya_uuid"
-#define PRODUCT_AUTHKEY     "tuya_authkey"
+#define PRODUCT_ID          "cnyiygalqpueeiwf"
+#define DEVICE_UUID         "uuid3658996f48293db1"
+#define PRODUCT_AUTHKEY     "BG15bQZz92o2iPUR7X1LDJYLXOlGpLwe"
 
 #define APP_VERSION         "1.0.0"
-#define APP_STORAGE_PATH    "/oem/mars/app/db/"
-#define APP_DEFAULT_KEY     "/oem/mars/app/tuya.key"
-#define APP_UPGRADE_PATH    "/userdata/version/"
-#define APP_UPGRADE_FILE    "/userdata/version/upgrade.zip"
-#define APP_VERSION_FILE    "/userdata/version/soft_version.json"
+#define APP_STORAGE_PATH    "./tuya/"
+#define APP_DEFAULT_KEY     "./tuya/tuya.key"
+#define APP_UPGRADE_PATH    "../version/"
+#define APP_UPGRADE_FILE    "../version/upgrade.zip"
+#define APP_VERSION_FILE    "../version/soft_version.json"
+
+extern "C" int tuya_wifi_init(void);
+
 
 IPC_MGR_INFO_S s_mgr_info = {0};
 CHAR_T s_raw_path[128] = {0};
@@ -62,6 +64,9 @@ STATIC VOID __IPC_APP_Get_Net_Status_cb(IN CONST BYTE_T stat)
         {
             IPC_APP_Notify_LED_Sound_Status_CB(IPC_MQTT_ONLINE);
             PlayVoice(V_SERVER_CONNECTED, PLAY_QUEUE);
+            tuya_message::Request req;
+            tuya_message::Result res = {};
+            TuyaComm::Get()->Send("ty_wifi_connect", &req, &res);
             TuyaComm::Get()->ReportAll();
             //strcpy(NULL, "SigFault Test");
             break;
@@ -77,32 +82,35 @@ STATIC VOID __IPC_APP_Get_Net_Status_cb(IN CONST BYTE_T stat)
     }
 }
 
+/*certification information(essential)*/
+std::string id = PRODUCT_ID;
+std::string uuid = DEVICE_UUID;
+std::string authKey = PRODUCT_AUTHKEY;
+
+//app version
+std::string soft_version;
+std::string MCU_version;
+std::string system_version;
 
 OPERATE_RET TUYA_IPC_SDK_START(WIFI_INIT_MODE_E connect_mode, CHAR_T *p_token)
 {
-    PR_DEBUG("SDK Version:%s\r\n", tuya_ipc_get_sdk_info());
+    printf("SDK Version:%s\r\n", tuya_ipc_get_sdk_info());
 	TUYA_IPC_SDK_RUN_VAR_S ipc_sdk_run_var ={0};
 	memset(&ipc_sdk_run_var,0,sizeof(ipc_sdk_run_var));
-
-	/*certification information(essential)*/
-    std::string id = PRODUCT_ID;
-    std::string uuid = DEVICE_UUID;
-    std::string authKey = PRODUCT_AUTHKEY;
-
+    
     TuyaLoadKey(APP_DEFAULT_KEY, id, uuid, authKey);
-
-    //app version
-    std::string soft_version;
-    std::string MCU_version;
-    std::string system_version;
-    SoftVersion(APP_VERSION_FILE, soft_version, MCU_version, system_version);
-    if (soft_version.empty())
-    {
-        soft_version = APP_VERSION;
+    std::ofstream uuid_file("/tmp/uuid.txt");
+    if (uuid_file.is_open()) {
+        uuid_file << uuid;
+        uuid_file.close();
+    } else {
+        LOGD(TAG, "Unable to open file to write UUID");
     }
-
+    SoftVersion(APP_VERSION_FILE, soft_version, MCU_version, system_version);
+   
+#if 0
     //对比系统版本号
-    //system_release_version 获取系统版本格式: c1_rk3308_system_0.8.9.0.release_B.e4e9b21c
+    //system_release_version 获取系统版本格式：c1_rk3308_system_0.8.9.0.release_B.e4e9b21c
     std::string res = shell::valueof(std::string("system_release_version"));
     LOGD(TAG, "system_release_version:{}", res);
     auto start = res.find("system");
@@ -121,10 +129,7 @@ OPERATE_RET TUYA_IPC_SDK_START(WIFI_INIT_MODE_E connect_mode, CHAR_T *p_token)
             LOGD(TAG, "current system version {} <= last system version {} , no need to upgrade system", version, system_version);
         }
     }
-    //删除上次下载的升级包
-    std::string cmd = "rm -rf /userdata/version/v*;sync";
-    std::system(cmd.c_str());
-
+#endif
     strcpy(ipc_sdk_run_var.iot_info.product_key, id.c_str());
     strcpy(ipc_sdk_run_var.iot_info.uuid, uuid.c_str());
     strcpy(ipc_sdk_run_var.iot_info.auth_key, authKey.c_str());
@@ -164,16 +169,19 @@ OPERATE_RET TUYA_IPC_SDK_START(WIFI_INIT_MODE_E connect_mode, CHAR_T *p_token)
 
 	OPERATE_RET ret = tuya_ipc_sdk_start(&ipc_sdk_run_var); 
     if(ret !=0 ){
-    	printf("ipc sdk v5 start fail,please check run parameter，ret=%d\n",ret);
+    	printf("ipc sdk v5 start fail,please check run parameter, ret=%d\n",ret);
     }
-    
+    else
+    {
+        printf("ipc sdk v5 start success\n");
+    }
 	return ret;
 }
 
 int main(int argc, char ** argv)
 {
     LOGVERSION("v1.0.14");
-    StackTrace stackTrack;
+    //StackTrace stackTrack;
     
     lcm::LCM lcm;
     if(!lcm.good())
@@ -186,7 +194,8 @@ int main(int argc, char ** argv)
 #if defined(TY_BT_MOD) && TY_BT_MOD == 1
     tuya_bt_init();
 #endif
-
+    tuya_wifi_init();
+    
     TUYA_IPC_SDK_START(WIFI_INIT_AP, NULL);
 
     pthread_t sweeper_detect_thread;

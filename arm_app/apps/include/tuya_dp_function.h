@@ -123,6 +123,7 @@ void DP_HandleDustCollectionNum(TY_OBJ_DP_S *dp);
 
 void DP_HandleDustCollectionSwitch(TY_OBJ_DP_S *dp);
 
+TY_OBJ_DP_S DP_ReportCustomizeModeSwitch(int dpId, bool state);
 void DP_HandleCustomizeModeSwitch(TY_OBJ_DP_S *dp);
 
 TY_OBJ_DP_S DP_ReportMopState(int dpId, int state);
@@ -159,6 +160,14 @@ void DP_HandleMopSlefCleaningStrength(TY_OBJ_DP_S *dp);
 
 void DP_HandleWipingStrength(TY_OBJ_DP_S *dp);
 
+void DP_HandleSmartEdge(TY_OBJ_DP_S *dp);
+void DP_HandleUploadLogs(TY_OBJ_DP_S *dp);
+void DP_HandleAvoidObsMode(TY_OBJ_DP_S *dp);
+void DP_HandleKeyLightDisplaySwitch(TY_OBJ_DP_S *dp);
+void DP_HandleStationHotFan(TY_OBJ_DP_S *dp);
+void DP_HandleStationHotWater(TY_OBJ_DP_S *dp);
+void DP_HandleStationHotFanTime(TY_OBJ_DP_S *dp);
+
 void TuyaReportVirtualWall(int dpId, uint8_t cmd, AppVirtualWall *msg);
 void TuyaReportRestrictedArea(int dpId, uint8_t cmd, AppRestrictedArea *msg);
 void TuyaReportSpotClean(int dpId, uint8_t cmd, AppSpotClean *msg);
@@ -176,6 +185,8 @@ void TuyaReportPartitionMerge(int dpId, uint8_t cmd, AppPartitionMerge *msg);
 void TuyaHandleStandardFunction(int dpId, uint8_t *data, int len);
 void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len);
 
+std::vector<uint8_t> ToVirtualWallData(uint8_t cmd, AppVirtualWall *msg);
+std::vector<uint8_t> ToRestrictedAreaData(uint8_t cmd, AppRestrictedArea *msg);
 
 
 

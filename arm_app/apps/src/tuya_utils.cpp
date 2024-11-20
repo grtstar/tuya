@@ -45,7 +45,7 @@ bool TuyaLoadKey(const char *path, std::string &id, std::string &uuid, std::stri
     }
     catch (const std::exception &e)
     {
-        LOGE(TAG, "parse KEY catch : {0}", e.what());
+        LOGE(TAG, "TuyaLoadKey: parse error : {0}", e.what());
         return false;
     }
 }
@@ -75,9 +75,35 @@ bool SoftVersion(const char *path, std::string &soft_version, std::string &mcu_v
     }
     catch (const std::exception &e)
     {
-        LOGE(TAG, "parse KEY catch : {0}", e.what());
-        return false;
+        LOGE(TAG, "SoftVersion: parse error {0}", e.what());
+        
     }
+    if (soft_version.empty())
+    {
+        // 读取 version.txt 的内容
+        std::ifstream in_file("./version.txt");
+        if (in_file.is_open())
+        {
+            getline(in_file, soft_version);
+            LOGD(TAG, "version:{}", soft_version);
+            in_file.close();
+        }
+    }
+    if (soft_version.empty())
+    {
+        soft_version = "1.0.0";
+    }
+    if (mcu_version.empty())
+    {
+         std::ifstream in_file("./mcu_version.txt");
+        if (in_file.is_open())
+        {
+            getline(in_file, mcu_version);
+            LOGD(TAG, "mcu version:{}", mcu_version);
+            in_file.close();
+        }
+    }
+    return false;
 }
 
 bool UpdateSoftVersion(const char *path, const std::string &soft_version, const std::string &mcu_version, const std::string &system_version)
@@ -139,12 +165,12 @@ bool MkdirFolder(const char *path)
         int status = mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
         if (0 != status)
         {
-            LOGE(TAG, "mkdir %s fail", path);
+            LOGE(TAG, "mkdir {} fail", path);
             return false;
         }
         else
         {
-            LOGD(TAG, "mkdir %s success", path);
+            LOGD(TAG, "mkdir {} success", path);
             return true;
         }
     }
@@ -238,7 +264,8 @@ uint8_t PixelToTuyaPixelv1(int8_t p)
     return 0x03;
 }
 
-uint8_t PixelToTuyaPixelv2(int8_t p) {
+uint8_t PixelToTuyaPixelv2(int8_t p) 
+{
   if (p == -1) 
   {
     return 0x00;
@@ -348,17 +375,18 @@ std::vector<uint8_t> tonb32(int32_t d)
     return v;
 }
 
-TuyaMap ToTuyaMap(const AppMap &map)
+TuyaMap ToTuyaMap(const AppMap &appMap)
 {
+    auto map = appMap.map;
     _mapResolution = map.resolution;
 
     TuyaMap tuya;
     // 普通版本
-    tuya.header.version = map.version;
+    tuya.header.version = appMap.version;
     // 地图识别 id
-    tuya.header.map_id = map.mapId;
+    tuya.header.map_id = appMap.mapId;
     // 地图非稳定状态
-    tuya.header.type = map.type;
+    tuya.header.type = appMap.type;
     // 地图宽度
     tuya.header.map_width = map.width;
     //
@@ -370,15 +398,15 @@ TuyaMap ToTuyaMap(const AppMap &map)
     //
     tuya.header.map_resolution = map.resolution * 100;
     //
-    if (map.charger.pose.x == 0 && map.charger.pose.y == 0)
+    if (appMap.charger.pose.x == 0 && appMap.charger.pose.y == 0)
     {
         tuya.header.charge_x = 0;
         tuya.header.charge_y = 0;
     }
     else
     {
-        tuya.header.charge_x = (-map.charger.pose.x) / map.resolution * 10;
-        tuya.header.charge_y = ((map.height - 1) - (-map.charger.pose.y) / map.resolution) * 10;
+        tuya.header.charge_x = (appMap.charger.pose.x-map.origin.pose.x) / map.resolution * 10;
+        tuya.header.charge_y = ((map.height - 1) -(appMap.charger.pose.y-map.origin.pose.y) / map.resolution) * 10;
     }
 
     //
@@ -429,7 +457,7 @@ TuyaMap ToTuyaMap(const AppMap &map)
         }
         tuya.region_num = 0;
     }
-    // 分区版本　&& 地板材质版本
+    // 分区版本 && 地板材质版本
     if (tuya.header.version == 0x01 || tuya.header.version == 0x02)
     {   
         
@@ -450,30 +478,33 @@ TuyaMap ToTuyaMap(const AppMap &map)
         tuya.pix = pixels;
         tuya.header.pix_lz4len = 0;
 
-        tuya.region_num = map.roomNum;
+        tuya.region_num = appMap.roomNum;
         for (int i = 0; i < tuya.region_num; i++)
         {
             TuyaRoom room;
-            room.room_propeties.room_id = map.roomPropeties[i].roomId;
-            room.room_propeties.clean_order = map.roomPropeties[i].cleanOrder;
-            room.room_propeties.clean_repeat = map.roomPropeties[i].cleanRepeart;
-            room.room_propeties.mop_repeat = map.roomPropeties[i].mopRepeat;
-            room.room_propeties.color_order = map.roomPropeties[i].colorOrder;
-            room.room_propeties.donot_sweep = map.roomPropeties[i].donotSweep;
-            room.room_propeties.donot_mop = map.roomPropeties[i].donotMop;
-            room.room_propeties.fan_power = MarsSuctionToTuya(map.roomPropeties[i].fanPower);
-            room.room_propeties.water_level = MarsCisternToTuya(map.roomPropeties[i].waterLevel);
-            room.room_propeties.enable_ymop = map.roomPropeties[i].enableYMop;
+            room.room_propeties.room_id =  MarRoomIdToTuya(appMap.roomPropeties[i].roomId);
+            room.room_propeties.clean_order = appMap.roomPropeties[i].cleanOrder;
+            room.room_propeties.clean_repeat = appMap.roomPropeties[i].cleanRepeart;
+            room.room_propeties.mop_repeat = appMap.roomPropeties[i].mopRepeat;
+            room.room_propeties.color_order = appMap.roomPropeties[i].colorOrder;
+            room.room_propeties.donot_sweep = appMap.roomPropeties[i].donotSweep;
+            room.room_propeties.donot_mop = appMap.roomPropeties[i].donotMop;
+            room.room_propeties.fan_power = (appMap.roomPropeties[i].fanPower);
+            room.room_propeties.water_level = (appMap.roomPropeties[i].waterLevel);
+            room.room_propeties.enable_ymop = appMap.roomPropeties[i].enableYMop;
 
-            room.room_name[0] = map.roomName[i].length();
-            strncpy((char *)&room.room_name[1], map.roomName[i].c_str(), sizeof(room.room_name) - 1);
+            LOGD(TAG, "room id:{} clean_order:{} clean_repeat:{} mop_repeat:{} color_order:{} donot_sweep:{} donot_mop:{} fan_power:{} water_level:{} enable_ymop:{}",
+                 room.room_propeties.room_id, room.room_propeties.clean_order, room.room_propeties.clean_repeat, room.room_propeties.mop_repeat, room.room_propeties.color_order, room.room_propeties.donot_sweep, room.room_propeties.donot_mop, room.room_propeties.fan_power, room.room_propeties.water_level, room.room_propeties.enable_ymop);
 
-            room.vertices_num = map.roomPolygon[i].count;
+            room.room_name[0] = appMap.roomName[i].length();
+            strncpy((char *)&room.room_name[1], appMap.roomName[i].c_str(), sizeof(room.room_name) - 1);
+
+            room.vertices_num = appMap.roomPolygon[i].count;
             for (int j = 0; j < room.vertices_num; j++)
             {
                 TuyaVertex vertex;
-                vertex.x = MarsXToTuya(map.roomPolygon[i].vetex[j]);
-                vertex.y = MarsYToTuya(map.roomPolygon[i].vetex[j]);
+                vertex.x = MarsXToTuya(appMap.roomPolygon[i].vetex[j]);
+                vertex.y = MarsYToTuya(appMap.roomPolygon[i].vetex[j]);
                 room.room_vertices.push_back(vertex);
             }
             tuya.rooms.push_back(room);
@@ -597,6 +628,17 @@ enum PATH_TYPE
     MOP_PATH
 };
 
+enum class CorePathType
+{
+    ZIGZAG_LINE_PATH,
+    ZIGZAG_AROUND_PATH,
+    NAVI_PATH,
+    CHARGE_PATH,
+    MOP_PATH,
+    EDGE_PATH
+};
+
+
 TuyaPath ToTuyaPath(const AppPath &path, int pathId, int pathType)
 {
     TuyaPath tuya;
@@ -616,26 +658,27 @@ TuyaPath ToTuyaPath(const AppPath &path, int pathId, int pathType)
         points[2 * i + 1] = MarsYToTuya(path.points[i]);
         points[2 * i] &= ~1;
         points[2 * i + 1] &= ~1;
-        // if(path.pointType[i] == CLEAN_PATH)
-        // {
-        //     points[2 * i] |= 0;
-        //     points[2 * i + 1] |= 0;
-        // }
-        // if(path.pointType[i] == NAVI_PATH)
-        // {
-        //     points[2 * i] |= 0;
-        //     points[2 * i + 1] |= 1;
-        // }
-        // if(path.pointType[i] == CHARGE_PATH)
-        // {
-        //     points[2 * i] |= 1;
-        //     points[2 * i + 1] |= 0;
-        // }
-        // if(path.pointType[i] == MOP_PATH)
-        // {
-        //     points[2 * i] |= 1;
-        //     points[2 * i + 1] |= 1;
-        // }
+        if(path.pointType[i] == (int8_t)CorePathType::NAVI_PATH)
+        {
+            points[2 * i] |= 0;
+            points[2 * i + 1] |= 1;
+        }
+        else if(path.pointType[i] == (int8_t)CorePathType::CHARGE_PATH)
+        {
+            points[2 * i] |= 1;
+            points[2 * i + 1] |= 0;
+        }
+        else if(path.pointType[i] == (int8_t)CorePathType::MOP_PATH)
+        {
+            points[2 * i] |= 1;
+            points[2 * i + 1] |= 1;
+        }
+        else 
+        {
+            points[2 * i] |= 0;
+            points[2 * i + 1] |= 0;
+        }
+
         points[2 * i] = htons(points[2 * i]);
         points[2 * i + 1] = htons(points[2 * i + 1]);
     }
@@ -693,7 +736,7 @@ bool ToTuyaVirtualWall(const AppVirtualWall &appVirtualWall, uint8_t cmd, std::v
     tuyaVirtualWall.push_back(cmd);
     if (appVirtualWall.version == 0)
     {
-        LOGD(TAG, "上报虚拟墙设置 v1.0.0");
+        //LOGD(TAG, "上报虚拟墙设置 v1.0.0");
         tuyaVirtualWall.push_back(appVirtualWall.count);
         for (int i = 0; i < appVirtualWall.count; i++)
         {
@@ -732,7 +775,7 @@ bool ToTuyaRestrictedArea(AppRestrictedArea &appRestrictedArea, uint8_t cmd, std
 
     if (appRestrictedArea.version == 0)
     {
-        LOGD(TAG, "上报禁区设置 v1.1.0");
+        //LOGD(TAG, "上报禁区设置 v1.1.0");
         return false;
     }
     if (appRestrictedArea.version == 1)

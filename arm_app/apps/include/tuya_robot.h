@@ -26,14 +26,13 @@
 #include "mars_message/AppMap.hpp"
 #include "mars_message/AppCleanRecord.hpp"
 
-#include "utils/log_.h"
+#include "message/tuya_messages.h"
 
 using namespace mars_message;
 
 class TuyaComm
 {
 private:
-    SweeperStatus sweeperStatus;
     GridMap         map;
     AppPath         path;
     AppPartsLife    partsLife;
@@ -56,16 +55,18 @@ public:
     void SetLcm(lcm::LCM *lcm)
     {
         lcm_ = lcm;
-        lcm_->subscribe("AS_Map", &TuyaComm::OnMap, this);
-        lcm_->subscribe("AS_Path", &TuyaComm::OnPath, this);
-        lcm_->subscribe("AS_VirtualWall", &TuyaComm::OnVirtualWall, this);
-        lcm_->subscribe("AS_RestrictedArea", &TuyaComm::OnRestrictedArea, this);
-        lcm_->subscribe("AS_CleanRecord", &TuyaComm::OnCleanRecord, this);
+        lcm_->subscribe("ty_Map", &TuyaComm::OnMap, this);
+        lcm_->subscribe("ty_Path", &TuyaComm::OnPath, this);
+        lcm_->subscribe("ty_VirtualWall", &TuyaComm::OnVirtualWall, this);
+        lcm_->subscribe("ty_RestrictedArea", &TuyaComm::OnRestrictedArea, this);
+        lcm_->subscribe("ty_CleanRecord", &TuyaComm::OnCleanRecord, this);
 
         //lcm_->subscribe("APPCMD", &TuyaComm::OnCmd, this);
-        lcm_->subscribe("AC_Status", &TuyaComm::OnSweeperStatus, this);
-        lcm_->subscribe("AC_PartsLife", &TuyaComm::OnPartsLife, this);
-        lcm_->subscribe("AC_CleanInfo", &TuyaComm::OnCleanInfo, this);
+        lcm_->subscribe("ty_robot_state", &TuyaComm::OnSweeperStatus, this);
+        lcm_->subscribe("ty_PartsLife", &TuyaComm::OnPartsLife, this);
+        lcm_->subscribe("ty_CleanInfo", &TuyaComm::OnCleanInfo, this);
+        lcm_->subscribe("ty_SaveMap", &TuyaComm::OnSaveMap, this);
+        lcm_->subscribe("ty_UpdateMap", &TuyaComm::OnUpdateMap, this);
         lcm_->subscribe("Mevt", &TuyaComm::OnEvent, this);
         lcm_->subscribe("Kevt", &TuyaComm::OnEvent, this);
     }
@@ -86,70 +87,19 @@ public:
         return lcm_->subscribe(channel, handlerMethod, handler);
     }
 
-    template <class MessageType>
-    inline bool Send(const std::string &channel, MessageType *msg, int timeoutMs = 100)
+    template <class MessageType, class MessageTypeRet>
+    inline int Send(const std::string &channel, MessageType *msg, MessageTypeRet *ret, int timeoutMs = 100, int retryTimes = 1)
     {
-        int threadId = pthread_self();
-        if(handlerId == 0)
-        {
-            handlerId = threadId;
-        }
-        bool b = false;
-        int r = lcm_->publish(channel, msg);
-        lcm::LCM::HandlerFunction<MessageType> handler = [&b, &msg](const lcm::ReceiveBuffer *rbuf,
-                                               const std::string &channel, const MessageType *ret){
-            *msg = *ret;                                    
-            b = true;                                        
-        };
-        auto sub = lcm_->subscribe(channel + "_Ack", handler);
-        int64_t startTime = TimeTick::Ms();
-        while(TimeTick::Ms() - startTime < timeoutMs)
-        {
-            if(threadId == handlerId)
-            {
-                lcm_->handleTimeout(1);
-            }
-            if(b == true)
-            {
-                break;
-            }
-        }
-        lcm_->unsubscribe(sub);
-        LOGD("COMM", "Send return: {}", b);
-        return b;
+        return lcm_->send(channel, msg, ret, timeoutMs, retryTimes) == 0;
     }
 
-    template <class MessageTypeReq, class MessageTypeRsp>
-    inline bool Call(const std::string &channel, const MessageTypeReq *req, MessageTypeRsp *rsp, int timeoutMs)
+    template <class MessageType>
+    inline bool Send(const std::string &channel, MessageType *msg, int timeoutMs = 100, int retryTimes = 1)
     {
-        int threadId = pthread_self();
-        if(handlerId == 0)
-        {
-            handlerId = threadId;
-        }
-        bool b = false;
-        int r = lcm_->publish(channel, req);
-        lcm::LCM::HandlerFunction<MessageTypeRsp> handler =[&b, &rsp](const lcm::ReceiveBuffer *rbuf,
-                                               const std::string &channel, const MessageTypeRsp *ret){
-            *rsp = *ret;                                    
-            b = true;                                        
-        };
-        auto sub = lcm_->subscribe(channel + "_Rsp", handler);
-        int64_t startTime = TimeTick::Ms();
-        while(TimeTick::Ms() - startTime < timeoutMs)
-        {
-            if(threadId == handlerId)
-            {
-                lcm_->handleTimeout(1);
-            }
-            if(b == true)
-            {
-                LOGD("COMM", "Get response {}", channel);
-                break;
-            }
-        }
-        lcm_->unsubscribe(sub);
-        return b;
+        MessageType ret;
+        int r = lcm_->send(channel, msg, &ret, timeoutMs, retryTimes);
+        *msg = ret;
+        return r == 0;
     }
 
     void HandleForever()
@@ -168,13 +118,15 @@ public:
     void OnMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppMap *msg);
     void OnPath(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppPath *msg);
     void OnCmd(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Debug *msg);
-    void OnSweeperStatus(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const SweeperStatus *msg);
+    void OnSweeperStatus(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotState *msg);
     void OnPartsLife(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppPartsLife *msg);
     void OnCleanInfo(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanInfo *msg);
     void OnVirtualWall(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppVirtualWall *msg);
     void OnRestrictedArea(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppRestrictedArea *msg);
     void OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanRecord *msg);
     void OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg);
+    void OnSaveMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
+    void OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
 public:
     void ReportStatus();
     void ReportMap();

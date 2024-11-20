@@ -15,15 +15,26 @@ find_package(spdlog REQUIRED)
 find_package(lcm REQUIRED)
 
 include_directories(apps/include sdk/include apps/src)
-
 include_directories(apps/src/bluez/includes)
 include_directories(apps/src/bluez/includes/src/shared)
 include_directories(apps/src/bluez/includes/lib)
+include_directories(apps/src/wifi/include)
+include_directories(nl/include/libnl3)
 
 add_subdirectory(apps/src/bluez/libbluetooth)
 add_subdirectory(apps/src/bluez/libshared)
 
+file(GLOB WIFI_SOURCES "apps/src/wifi/wifi/*.c")
+
+add_compile_definitions(OS_NET_LINUX_OS)
+add_compile_definitions(TY_BT_MOD=1)
+#add_compile_definitions(RK_DEVICEIO)
+
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/sdk/lib)
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/nl/lib)
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib)
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib/lib64/bluez)
+
 add_executable(${PROJECT_NAME}  apps/src/tuya.cpp
                                 apps/src/tuya_wifi.c
                                 apps/src/tuya_ops.cpp
@@ -37,15 +48,14 @@ add_executable(${PROJECT_NAME}  apps/src/tuya.cpp
                                 apps/src/lz4/lz4frame.c
                                 apps/src/lz4/lz4hc.c
                                 apps/src/lz4/xxhash.c
-                                apps/src/timed_task.cpp
                                 apps/src/tuya_os_adapt_bt.c
+                                ${WIFI_SOURCES}
 )
 
-#用于删除某编译选项,例如 -O3,(关闭 -O3 优化后,崩溃时可提供更详细的调用栈信息)
+#用于删除某编译选项，例如 -O3,(关闭 -O3 优化后，崩溃时可提供更详细的调用栈信息)
 # get_target_property(COMPILE_FLAGS ${PROJECT_NAME} COMPILE_OPTIONS )
 # list(REMOVE_ITEM COMPILE_FLAGS -O3)
 # set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_OPTIONS "${COMPILE_FLAGS}" )
-
 
 # spdlog
 target_link_libraries(${PROJECT_NAME} spdlog::spdlog_header_only)
@@ -53,5 +63,12 @@ target_link_libraries(${PROJECT_NAME} spdlog::spdlog_header_only)
 target_link_libraries(${PROJECT_NAME} lcm)
 # tuya
 target_link_libraries(${PROJECT_NAME} tuya_iot)
+# deviceio
+#target_link_libraries(${PROJECT_NAME} DeviceIo)
+#target_link_libraries(${PROJECT_NAME} asound)
 # bluez
 target_link_libraries(${PROJECT_NAME} bluetooth shared)
+# libnl
+target_link_libraries(${PROJECT_NAME} libnl-3.a libnl-genl-3.a)
+# wpa
+target_link_libraries(${PROJECT_NAME} libwpa_client_64.a)

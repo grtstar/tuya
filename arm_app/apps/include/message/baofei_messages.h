@@ -1,0 +1,24 @@
+#pragma once
+
+#include <utils/json.hpp>
+#define __NLOHMANN_JSON_CPP
+#include <baofei_message/RobotEvent.hpp>
+#include <baofei_message/Result.hpp>
+#include <baofei_message/Request.hpp>
+#include <baofei_message/SetTime.hpp>
+#include <baofei_message/Orders.hpp>
+#include <baofei_message/Signs.hpp>
+#include <baofei_message/RobotState.hpp>
+#include <baofei_message/Map.hpp>
+#include <baofei_message/Path.hpp>
+#include <baofei_message/QuietTime.hpp>
+#include <baofei_message/RegionCleans.hpp>
+#include <baofei_message/RegionProperties.hpp>
+#include <baofei_message/SetRegionProperties.hpp>
+#include <baofei_message/Forbbiden.hpp>
+#include <baofei_message/Regions.hpp>
+#include <baofei_message/RegionSplit.hpp>
+#include <baofei_message/MapName.hpp>
+#include <baofei_message/ZoneStates.hpp>
+#include <baofei_message/RegionMaps.hpp>
+#include <baofei_message/CleanInfo.hpp>

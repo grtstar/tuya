@@ -1,6 +1,6 @@
 /**
  * @file tuya_os_adapt_bt.h
- * @brief BLE操作接口
+ * @brief BLE 操作接口
  * 
  * @copyright Copyright(C),2018-2020, 涂鸦科技 www.tuya.com
  * 
@@ -53,6 +53,7 @@
 #define BLE_LOG_EN              TRUE
 #endif
 
+#define BLE_LOG_EN              TRUE
 #if BLE_LOG_EN
 #define BLE_TAG                 "BLE_INFO"
 #define BLE_LOG(format,...)     printf("[%s]: "format"", BLE_TAG, ##__VA_ARGS__)
@@ -642,6 +643,7 @@ void * l2cap_server_pthread(void *pReserved)
     memset(&l2cap_clientaddr, 0, sizeof(l2cap_clientaddr));
     l2cap_clientaddr_len = sizeof(l2cap_clientaddr);
     l2cap_fd = accept(l2cap_sock, (struct sockaddr *)&l2cap_clientaddr, &l2cap_clientaddr_len);
+    BLE_LOG("l2cap_fd : %d...\r\n", l2cap_fd);
     if (l2cap_fd < 0)
     {
         perror("Fail to accept!\r\n");
@@ -680,7 +682,6 @@ void * l2cap_server_pthread(void *pReserved)
     data.len = 0;
     data.data = NULL;
     gatt_server.bt_msg_cb(0, TY_BT_EVENT_CONNECTED, &data);
-
     mainloop_run();
 
     BLE_LOG("Function l2cap_server_pthread exited!\r\n");
@@ -783,7 +784,7 @@ int tuya_os_adapt_bt_reset_adv(tuya_ble_data_buf_t *adv, tuya_ble_data_buf_t *sc
 
 
 /**
- * @brief tuya_os_adapt_bt 获取rssi信号值
+ * @brief tuya_os_adapt_bt 获取 rssi 信号值
  * @return OPERATE_RET 
  */
 int tuya_os_adapt_bt_get_rssi(signed char *rssi)
@@ -830,7 +831,7 @@ int tuya_os_adapt_bt_assign_scan(IN OUT ty_bt_scan_info_t *info)
 }
 
 /**
- * @brief tuya_os_adapt_bt 广播接收初始化,包括监控数据状态和接收数据函数（用于蓝牙遥控器ffc） 老基线函数tuya_bt_ffc_regist
+ * @brief tuya_os_adapt_bt 广播接收初始化，包括监控数据状态和接收数据函数（用于蓝牙遥控器 ffc）老基线函数 tuya_bt_ffc_regist
  * @return OPERATE_RET 
  */
 OPERATE_RET tuya_os_adapt_bt_scan_init(IN TY_BT_SCAN_ADV_CB scan_adv_cb)
@@ -841,7 +842,7 @@ OPERATE_RET tuya_os_adapt_bt_scan_init(IN TY_BT_SCAN_ADV_CB scan_adv_cb)
 }
 
 /**
- * @brief tuya_os_adapt_bt 广播接收scan start
+ * @brief tuya_os_adapt_bt 广播接收 scan start
  * @return OPERATE_RET 
  */
 OPERATE_RET tuya_os_adapt_bt_start_scan(void)
@@ -852,7 +853,7 @@ OPERATE_RET tuya_os_adapt_bt_start_scan(void)
 }
 
 /**
- * @brief tuya_os_adapt_bt 广播接收scan stop
+ * @brief tuya_os_adapt_bt 广播接收 scan stop
  * @return OPERATE_RET 
  */
 OPERATE_RET tuya_os_adapt_bt_stop_scan(void)
@@ -873,11 +874,77 @@ OPERATE_RET tuya_os_adapt_reg_bt_intf(void)
     return OPRT_OK;
 }
 
+bool check_hci0_exists()
+{
+    int ret;
+
+    ret = system("hciconfig hci0 > /dev/null 2>&1");
+    if (ret == 0) {
+        BLE_LOG("hci0 exists.\r\n");
+        return true;
+    }
+
+    BLE_LOG("hci0 does not exist.\r\n");
+    return false;
+}
+
+bool check_hci0_runnning()
+{
+    int ret;
+    char buffer[128];
+
+    ret = system("hciconfig hci0 > /dev/null 2>&1");
+    if (ret == 0) {
+        FILE *fp = popen("hciconfig hci0 | grep RUNNING", "r");
+        if (fp == NULL) {
+            perror("popen failed");
+            return false;
+        }
+
+        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+            pclose(fp);
+            BLE_LOG("hci0 is already up and running.\r\n");
+            return true;
+        }
+
+        pclose(fp);
+    }
+
+    return false;
+}
+
+bool bt_start()
+{
+    if(check_hci0_runnning())
+    {
+        return true;
+    }
+    system("bt_init.sh");
+    for(int i=0; i<100; i++)
+    {
+        if(check_hci0_exists())
+        {
+            system("hciconfig hci0 up");
+            break;
+        }
+        usleep(100000);
+    }
+
+    return check_hci0_runnning();
+}
+
 OPERATE_RET tuya_bt_init(VOID)
 {
     BLE_LOG("Function tuya_bt_init called!\r\n");
 
+    bt_start();
+    
     return tuya_os_adapt_reg_intf(INTF_BT, &m_tuya_os_bt_intfs);
+}
+
+int gpio_test_all_cb()
+{
+	return 0;
 }
 
 #endif

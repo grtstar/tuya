@@ -7,6 +7,10 @@
 #include <fstream>
 #include <lcm/lcm-cpp.hpp>
 
+#include <mars_message/OtaMsg.hpp>
+#include <mars_message/OtaAck.hpp>
+#include <mars_message/Event.hpp>
+
 #include "tuya_ipc_media.h"
 #include "tuya_cloud_com_defs.h"
 #include "tuya_cloud_types.h"
@@ -16,6 +20,7 @@
 #include "tuya_ipc_media_demo.h"
 #include "tuya_ipc_sweeper_demo.h"
 #include "tuya.h"
+#include "tuya_robot.h"
 #include "utils/json.hpp"
 #include "utils/shell.hpp"
 #include "voice.h"
@@ -25,12 +30,12 @@ extern void TuyaHandleDPQuery(int dpId);
 extern void TuyaHandleRawDPCmd(int dpId, uint8_t *data, int len);
 extern void TuyaHandleDPCmd(TY_OBJ_DP_S *dp);
 using json = nlohmann::json;
-#define UPGRADE_SCRIPT   "/oem/mars/upgrade.sh"
-#define APP_OTA_SCRIPT   "/oem/mars/app_ota.sh"
-#define MCU_OTA_SCRIPT   "/oem/mars/mcu_ota.sh"
-#define SYSTEM_OTA_SCRIPT   "/oem/mars/system_ota.sh"
-#define APP_VERSION_FILE "/userdata/version/soft_version.json"
-#define APP_UPGRADE_VERSION_FILE "/userdata/version/%s/soft_version.json"
+#define UPGRADE_SCRIPT   "./ota/upgrade.sh"
+#define APP_OTA_SCRIPT   "./ota/app_ota.sh"
+#define MCU_OTA_SCRIPT   "./ota/mcu_ota.sh"
+#define SYSTEM_OTA_SCRIPT   "./ota/system_ota.sh"
+#define APP_VERSION_FILE "./version/soft_version.json"
+#define APP_UPGRADE_VERSION_FILE "./version/%s/soft_version.json"
 
 VOID IPC_APP_Notify_LED_Sound_Status_CB(IPC_APP_NOTIFY_EVENT_E notify_event)
 {
@@ -74,6 +79,42 @@ VOID IPC_APP_Reset_System_CB(GW_RESET_TYPE_E type)
     IPC_APP_Notify_LED_Sound_Status_CB(IPC_RESET_SUCCESS);
     //TODO
     /* Developers need to restart IPC operations */
+    switch(type)
+    {
+        case GW_LOCAL_RESET_FACTORY:
+        {
+            //system("./reset_factory.sh &");
+            break;
+        }
+        case GW_REMOTE_UNACTIVE:
+        {
+            mars_message::Event evt = {0, 0};
+            if(!TuyaComm::Get()->Send("ty_unactive", &evt, 200))
+            {
+                system("./reset_wifi.sh &");
+            }
+            break;
+        }
+        case GW_LOCAL_UNACTIVE:
+        {
+            mars_message::Event evt = {0, 0};
+            if(!TuyaComm::Get()->Send("ty_unactive", &evt, 200))
+            {
+                system("./reset_wifi.sh &");
+            }
+            break;
+        }
+        case GW_REMOTE_RESET_FACTORY:
+        {
+            system("./reset_factory.sh &");
+            break;
+        }
+        case GW_RESET_DATA_FACTORY:
+        {
+            system("./reset_data.sh &");
+            break;
+        }
+    }
 }
 
 
@@ -223,7 +264,7 @@ VOID IPC_APP_handle_dp_cmd_objs(IN CONST TY_RECV_OBJ_DP_S *dp_rev)
     INT_T table_count = ( sizeof(s_dp_table) / sizeof(s_dp_table[0]) );
     INT_T index = 0;
     printf("recv dpid: count=[%d]\r\n", cnt);
-    // 倒序处理,保证最后发出启动指令
+    // 倒序处理，保证最后发出启动指令
     for(index = cnt-1; index >= 0; index--)
     {
         TY_OBJ_DP_S *p_dp_obj = dp_data + index;
@@ -250,149 +291,9 @@ VOID __IPC_APP_upgrade_notify_cb(IN CONST FW_UG_S *fw, IN CONST INT_T download_r
 
     PR_DEBUG("Upgrade Finish");
     PR_DEBUG("download_result:%d fw_url:%s", download_result, fw->fw_url);
-
     if(download_result == 0)
     {
-        /* The developer needs to implement the operation of OTA upgrade,
-        when the OTA file has been downloaded successfully to the specified path. [ p_mgr_info->upgrade_file_path ]*/
-        
-        //TODO 判断磁盘剩余空间情况
-
-        //启动升级脚本进行升级操作
-        std::string version = "v";
-        version += fw->sw_ver;
-        std::string cmd = UPGRADE_SCRIPT;
-        PR_DEBUG("start to upgrade--------------------------");
-        std::string res = shell::valueof(cmd);
-        PR_DEBUG("upgrade cmd %s res: %s", cmd.c_str(), res.c_str());
-        if (res != "success")
-        {
-            PR_ERR("upgrade scrtpt fail");
-            PlayVoice(V_UPDATE_FAIL, 0);
-            return;
-        }
-
-        json ver_info;
-        bool ret = false;
-        std::string upgrade_soft_version;
-        std::string upgrade_MCU_version;
-        std::string upgrade_system_version;
-        char upgrade_version_file[100] = {0};
-        sprintf(upgrade_version_file, APP_UPGRADE_VERSION_FILE, version.c_str());
-        PR_DEBUG("upgrade_version_file: %s", upgrade_version_file);
-        ret = SoftVersion(upgrade_version_file, upgrade_soft_version, upgrade_MCU_version, upgrade_system_version);
-        if (!ret)
-        {
-            PR_ERR("get upgrade version fail");
-            PlayVoice(V_UPDATE_FAIL, 0);
-            return;
-        }
-
-        std::string soft_version;
-        std::string MCU_version;
-        std::string system_version;
-        SoftVersion(APP_VERSION_FILE, soft_version, MCU_version, system_version);
-        ver_info["system"] = system_version;
-
-        //比对要升级的和当前的软件版本
-        ver_info["soft"] = soft_version;
-        if(CompareVersion(upgrade_soft_version, soft_version) == 1)
-        {   
-            PR_DEBUG("start to upgrade application--------------------------");
-            cmd = APP_OTA_SCRIPT;
-            cmd += " " + version;
-            res = shell::valueof(cmd);
-            PR_DEBUG("upgrade cmd %s res: %s", cmd.c_str(), res.c_str());
-            if (res != "success" && res != "no app")
-            {
-                PR_ERR("upgrade application fail");
-                PlayVoice(V_UPDATE_FAIL, 0);
-                return;
-            }
-            else
-            {   
-                if (res != "no app")
-                {
-                    ver_info["soft"] = upgrade_soft_version;
-                }
-            }
-            PR_DEBUG("upgrade application complete--------------------------");
-        }
-        else
-        {
-            PR_DEBUG("no need to upgrade application");
-        }
-
-        //比对要升级的和当前的MCU版本
-        ver_info["MCU"] = MCU_version;
-        if(CompareVersion(upgrade_MCU_version, MCU_version) == 1)
-        {   
-            PR_DEBUG("start to upgrade MCU--------------------------");
-            cmd = MCU_OTA_SCRIPT;
-            cmd += " " + version;
-            res = shell::valueof(cmd);
-            PR_DEBUG("upgrade cmd %s res: %s", cmd.c_str(), res.c_str());
-            if (res != "success" && res != "no mcu bin")
-            {
-                PR_ERR("upgrade MCU fail");
-                PlayVoice(V_UPDATE_FAIL, 0);
-                return;
-            }
-            else
-            {   
-                if (res != "no mcu bin")
-                {
-                    ver_info["MCU"] = upgrade_MCU_version;
-                }
-            }
-            PR_DEBUG("upgrade MCU complete--------------------------");
-        }
-        else
-        {
-            PR_DEBUG("no need to upgrade MCU");
-        }
-
-        //更新版本
-        std::string ver_file = APP_VERSION_FILE;
-        ret = UpdateSoftVersion(ver_file.c_str(), ver_info["soft"].get<std::string>(),
-                          ver_info["MCU"].get<std::string>(),
-                          ver_info["system"].get<std::string>());
-        if (!ret)
-        {   
-            PR_ERR("update version fail");
-            PlayVoice(V_UPDATE_FAIL, 0);
-            return;
-        }
-
-        //比对要升级的和当前的系统版本
-        if (CompareVersion(upgrade_system_version, system_version) == 1)
-        {
-            PR_DEBUG("start to upgrade system--------------------------");
-            cmd = SYSTEM_OTA_SCRIPT;
-            cmd += " " + version;
-            res = shell::valueof(cmd);
-            PR_DEBUG("upgrade cmd %s res: %s", cmd.c_str(), res.c_str());
-            if (res != "success" && res != "no system image")
-            {
-                PR_ERR("upgrade system fail");
-                //系统没升级成功 回滚软件版本 否则下次无法触发升级
-                UpdateSoftVersion(ver_file.c_str(), soft_version,
-                                  ver_info["MCU"].get<std::string>(),
-                                  ver_info["system"].get<std::string>());
-                PlayVoice(V_UPDATE_FAIL, 0);
-                return;
-            }
-        }
-        else
-        {
-            PR_DEBUG("no need to upgrade system");
-        }
-
-        PlayVoice(V_UPDATE_SUCC, 0);
-
-        sleep(1);
-        cmd = "reboot";
-        std::system(cmd.c_str());
+        system("./upgrade.sh > ../upgrade.log");
     }
 }
 
@@ -474,7 +375,7 @@ STATIC VOID tuya_ipc_sdk_p2p_init()
     p2p_var.max_client_num = s_ipc_sdk_run_handler.sdk_run_info.p2p_info.max_p2p_client;
 
 #if 0
-    //TODO 这些变量是否可以使用media_info。从demo上来看，是可以不同的
+    //TODO 这些变量是否可以使用 media_info。从 demo 上来看，是可以不同的
     p2p_var.rev_audio_codec = s_ipc_sdk_run_handler.sdk_run_info.media_info.media_info.audio_codec[E_CHANNEL_AUDIO];
     p2p_var.audio_sample =  s_ipc_sdk_run_handler.sdk_run_info.media_info.media_info.audio_sample[E_CHANNEL_AUDIO];
     p2p_var.audio_databits =  s_ipc_sdk_run_handler.sdk_run_info.media_info.media_info.audio_databits[E_CHANNEL_AUDIO];
@@ -484,7 +385,7 @@ STATIC VOID tuya_ipc_sdk_p2p_init()
 #endif
 
     #if 1
-    //TODO 这些变量是否可以使用media_info。从demo上来看，是可以不同的
+    //TODO 这些变量是否可以使用 media_info。从 demo 上来看，是可以不同的
     p2p_var.rev_audio_codec = TUYA_CODEC_VIDEO_H264;
     p2p_var.audio_sample =  TUYA_AUDIO_SAMPLE_8K;
     p2p_var.audio_databits =  TUYA_AUDIO_DATABITS_16;
@@ -515,7 +416,7 @@ STATIC VOID tuya_ipc_sdk_net_status_change_cb(IN CONST BYTE_T stat)
 #if defined(WIFI_GW) && (WIFI_GW==0)
         case GB_STAT_CLOUD_CONN:     //for wired ipc
 #endif
-          //  break; CI上 ：上线是 7.ipc本地是11。所以要注释掉break
+          //  break; CI 上：上线是 7.ipc 本地是 11。所以要注释掉 break
         case STAT_MQTT_ONLINE:{
             PR_DEBUG("mqtt is online %d\r\n",stat);
             if(s_mqtt_online_status == FALSE){
@@ -551,8 +452,21 @@ STATIC VOID* tuya_ipc_sdk_mqtt_online_proc(PVOID_T arg)
         ret = tuya_ipc_get_service_time_force(&time_utc, &time_zone);
     } while(ret != OPRT_OK);
 
+    char cmd[256] = {0};
+    // 设置系统时间
+    printf("time_utc:%ld, time_zone:%d\n", time_utc, time_zone);
+    snprintf(cmd, 256, "date -s @%ld", time_utc + time_zone);
+    system(cmd);
+    // 设置系统时区
+
+
+    char tz_cmd[64];
+    snprintf(tz_cmd, sizeof(tz_cmd), "timedatectl set-timezone Etc/GMT%+d", -time_zone);
+    system(tz_cmd);
+
+
     tuya_ipc_sdk_p2p_init();            // 初始化 p2p
-//    IPC_APP_upload_all_status();        // 上传支持的dp点信息
+//    IPC_APP_upload_all_status();        // 上传支持的 dp 点信息
     tuya_ipc_upload_skills();           // 上传设备能力
     PR_DEBUG("tuya_ipc_sdk_mqtt_online_proc is end run\n");
 
@@ -578,7 +492,7 @@ OPERATE_RET tuya_ipc_sdk_start(IN CONST TUYA_IPC_SDK_RUN_VAR_S * pRunInfo)
 	s_ipc_sdk_run_handler.sdk_run_info = *pRunInfo;
     tuya_ipc_set_log_attr(pRunInfo->debug_info.log_level,NULL);
     
-    //setup:创建等待mqtt上线进程，mqtt上线后，再开启与网络相关的业务
+    //setup:创建等待 mqtt 上线进程，mqtt 上线后，再开启与网络相关的业务
     int op_ret = pthread_create(&s_ipc_sdk_run_handler.mqtt_status_change_handle, NULL, tuya_ipc_sdk_mqtt_online_proc, NULL);
     if(op_ret < 0){
         printf("create tuya_ipc_sdk_mqtt_online_proc  thread is error\n");
@@ -603,7 +517,7 @@ OPERATE_RET tuya_ipc_sdk_start(IN CONST TUYA_IPC_SDK_RUN_VAR_S * pRunInfo)
     env.gw_rst_cb = pRunInfo->iot_info.gw_reset_cb;
     env.gw_restart_cb = pRunInfo->iot_info.gw_restart_cb;
 
-    // 初始化SDK
+    // 初始化 SDK
     ret = tuya_ipc_init_sdk(&env);
 	if(OPRT_OK != ret){
 		printf("init sdk is error\n");
@@ -618,14 +532,14 @@ OPERATE_RET tuya_ipc_sdk_start(IN CONST TUYA_IPC_SDK_RUN_VAR_S * pRunInfo)
 		return ret;
 	}
 
-    // 启动SDK
+    // 启动 SDK
 	ret = tuya_ipc_start_sdk(WIFI_GWCM_OLD, pRunInfo->net_info.connect_mode, pRunInfo->debug_info.qrcode_token);
 	if(OPRT_OK != ret){
 		printf("start sdk is error\n");
 		return ret;
 	}
 
-    // 初始化扫地机SDK
+    // 初始化扫地机 SDK
     ret = tuya_sweeper_init_sdk();
     if(OPRT_OK != ret){
 		printf("tuya_sweeper_init_sdk failed\n");

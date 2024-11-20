@@ -844,11 +844,19 @@ typedef struct {
 typedef VOID (*GW_APP_LOG_PATH_CB)(OUT CHAR_T *path, IN CONST INT_T len);
 
 /**
+ * @brief Handler for log deal result info
+ * 
+ * @param result 
+ */
+typedef VOID (*GW_APP_LOG_DEAL_INFO_CB)(OUT INT_T result);
+
+/**
  * @brief Definition of IoT callbacks used by APP
  */
 typedef struct {
     /** path for log upload */
     GW_APP_LOG_PATH_CB gw_app_log_path_cb;
+    GW_APP_LOG_DEAL_INFO_CB gw_app_log_deal_info_cb;
 }TY_IOT_APP_CBS_S;
 
 #ifdef __cplusplus
