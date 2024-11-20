@@ -1,9 +1,0 @@
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/CMakeFiles/rebuild_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/CMakeFiles/edit_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/CMakeFiles/tuya_app.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libbluetooth/CMakeFiles/rebuild_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libbluetooth/CMakeFiles/edit_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libbluetooth/CMakeFiles/bluetooth.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libshared/CMakeFiles/rebuild_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libshared/CMakeFiles/edit_cache.dir
-/home/grt/ls/reality/depends/xdsrc/tuya/arm_app/build_rk3326/apps/src/bluez/libshared/CMakeFiles/shared.dir
