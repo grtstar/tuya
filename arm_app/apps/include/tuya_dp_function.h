@@ -164,6 +164,7 @@ void DP_HandleSmartEdge(TY_OBJ_DP_S *dp);
 void DP_HandleUploadLogs(TY_OBJ_DP_S *dp);
 void DP_HandleAvoidObsMode(TY_OBJ_DP_S *dp);
 void DP_HandleKeyLightDisplaySwitch(TY_OBJ_DP_S *dp);
+void DP_HandleStationLightDisplaySwitch(TY_OBJ_DP_S *dp);
 void DP_HandleStationHotFan(TY_OBJ_DP_S *dp);
 void DP_HandleStationHotWater(TY_OBJ_DP_S *dp);
 void DP_HandleStationHotFanTime(TY_OBJ_DP_S *dp);

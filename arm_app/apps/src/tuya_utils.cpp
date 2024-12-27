@@ -275,6 +275,10 @@ uint8_t PixelToTuyaPixelv2(int8_t p)
   {
     return 0x01;
   } 
+  else if(p == 0)
+  {
+    return (28 << 3) | 0x07;
+  }
   else if (p < 60 && p >= 45) 
   {
     return 0x00;
@@ -291,6 +295,7 @@ uint8_t PixelToTuyaPixelv2(int8_t p)
     r = r | 0x02;
     return r;
   }
+ 
   return 0x00;
 }
 
@@ -448,12 +453,12 @@ TuyaMap ToTuyaMap(const AppMap &appMap)
         {
             tuya.pix = pixels;
             tuya.header.pix_lz4len = 0;
-            LOGD(TAG, "map lz4 compress failed, send origin data");
+            //LOGD(TAG, "map lz4 compress failed, send origin data");
         }
         else
         {
             tuya.header.pix_lz4len = tuya.pix.size();
-            LOGD(TAG, "map lz4 compress len = {}", tuya.header.pix_lz4len);
+            //LOGD(TAG, "map lz4 compress len = {}", tuya.header.pix_lz4len);
         }
         tuya.region_num = 0;
     }
@@ -479,8 +484,13 @@ TuyaMap ToTuyaMap(const AppMap &appMap)
         tuya.header.pix_lz4len = 0;
 
         tuya.region_num = appMap.roomNum;
+        
         for (int i = 0; i < tuya.region_num; i++)
         {
+            // LOGD(TAG, "room id:{} clean_order:{} clean_repeat:{} mop_repeat:{} color_order:{} donot_sweep:{} donot_mop:{} fan_power:{} water_level:{} enable_ymop:{}",
+            //      appMap.roomPropeties[i].roomId, appMap.roomPropeties[i].cleanOrder, appMap.roomPropeties[i].cleanRepeart, 
+            //      appMap.roomPropeties[i].mopRepeat, appMap.roomPropeties[i].colorOrder, appMap.roomPropeties[i].donotSweep, 
+            //      appMap.roomPropeties[i].donotMop, appMap.roomPropeties[i].fanPower, appMap.roomPropeties[i].waterLevel, appMap.roomPropeties[i].enableYMop);
             TuyaRoom room;
             room.room_propeties.room_id =  MarRoomIdToTuya(appMap.roomPropeties[i].roomId);
             room.room_propeties.clean_order = appMap.roomPropeties[i].cleanOrder;
@@ -493,8 +503,10 @@ TuyaMap ToTuyaMap(const AppMap &appMap)
             room.room_propeties.water_level = (appMap.roomPropeties[i].waterLevel);
             room.room_propeties.enable_ymop = appMap.roomPropeties[i].enableYMop;
 
-            LOGD(TAG, "room id:{} clean_order:{} clean_repeat:{} mop_repeat:{} color_order:{} donot_sweep:{} donot_mop:{} fan_power:{} water_level:{} enable_ymop:{}",
-                 room.room_propeties.room_id, room.room_propeties.clean_order, room.room_propeties.clean_repeat, room.room_propeties.mop_repeat, room.room_propeties.color_order, room.room_propeties.donot_sweep, room.room_propeties.donot_mop, room.room_propeties.fan_power, room.room_propeties.water_level, room.room_propeties.enable_ymop);
+            // LOGD(TAG, "room id:{} clean_order:{} clean_repeat:{} mop_repeat:{} color_order:{} donot_sweep:{} donot_mop:{} fan_power:{} water_level:{} enable_ymop:{}",
+            //      room.room_propeties.room_id, room.room_propeties.clean_order, room.room_propeties.clean_repeat, 
+            //      room.room_propeties.mop_repeat, room.room_propeties.color_order, room.room_propeties.donot_sweep, 
+            //      room.room_propeties.donot_mop, room.room_propeties.fan_power, room.room_propeties.water_level, room.room_propeties.enable_ymop);
 
             room.room_name[0] = appMap.roomName[i].length();
             strncpy((char *)&room.room_name[1], appMap.roomName[i].c_str(), sizeof(room.room_name) - 1);
@@ -598,7 +610,7 @@ void SaveTuyaMap(TuyaMap &tuya, const char *file_path)
             std::vector<uint8_t> lz4_data;
             if (lz4compress(buf, ori_len, lz4_data) <= 0)
             {
-                LOGD(TAG, "map lz4 compress failed, send origin data");
+                //LOGD(TAG, "map lz4 compress failed, send origin data");
                 tuya.header.pix_lz4len = 0;
                 fwrite(&tuya.header.pix_lz4len, sizeof(tuya.header.pix_lz4len), 1, fp);
                 fwrite(buf, ori_len, 1, fp);
@@ -686,12 +698,12 @@ TuyaPath ToTuyaPath(const AppPath &path, int pathId, int pathType)
     {
         tuya.points.assign((uint8_t *)&points[0], ((uint8_t *)&points[0]) + points.size() * 2);
         tuya.header.lz4len = 0;
-        LOGD(TAG, "path lz4 compress failed, send origin data");
+        //LOGD(TAG, "path lz4 compress failed, send origin data");
     }
     else
     {
         tuya.header.lz4len = tuya.points.size();
-        LOGD(TAG, "path lz4 compress len = {}", tuya.header.lz4len);
+        //LOGD(TAG, "path lz4 compress len = {}", tuya.header.lz4len);
     }
 #else
     tuya.header.count = 2;

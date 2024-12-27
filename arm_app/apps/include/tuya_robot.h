@@ -60,6 +60,7 @@ public:
         lcm_->subscribe("ty_VirtualWall", &TuyaComm::OnVirtualWall, this);
         lcm_->subscribe("ty_RestrictedArea", &TuyaComm::OnRestrictedArea, this);
         lcm_->subscribe("ty_CleanRecord", &TuyaComm::OnCleanRecord, this);
+        lcm_->subscribe("ty_m_schedule", &TuyaComm::OnSchedule, this);
 
         //lcm_->subscribe("APPCMD", &TuyaComm::OnCmd, this);
         lcm_->subscribe("ty_robot_state", &TuyaComm::OnSweeperStatus, this);
@@ -124,6 +125,7 @@ public:
     void OnVirtualWall(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppVirtualWall *msg);
     void OnRestrictedArea(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppRestrictedArea *msg);
     void OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanRecord *msg);
+    void OnSchedule(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppLocalAlert *msg);
     void OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg);
     void OnSaveMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
     void OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);

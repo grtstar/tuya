@@ -11,6 +11,7 @@
 #include "mars_message/GridMap.hpp"
 #include "mars_message/AppPath.hpp"
 #include "mars_message/RobotStatus.hpp"
+#include "mars_message/KeyValue.hpp"
 
 using namespace mars_message;
 
@@ -178,6 +179,48 @@ OPERATE_RET TUYA_IPC_SDK_START(WIFI_INIT_MODE_E connect_mode, CHAR_T *p_token)
 	return ret;
 }
 
+class TestHandler
+{
+public:
+    void OnGet(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const mars_message::KeyValue *msg)
+    {
+        KeyValue ret;
+        ret.value = msg->value;
+        switch(msg->value)
+        {
+            case 'PID':
+            ret.key = id;
+            break;
+            case 'CVER':
+            ret.key = soft_version;
+            break;
+            case 'MAC':
+            ret.key = shell::valueof("ifconfig eth0 | grep HWaddr | awk '{print $5}'");
+            break;
+        }
+        TuyaComm::Get()->Publish("Mgetr", &ret);
+    }
+
+    void OnSet(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const mars_message::KeyValue *msg)
+    {
+        KeyValue ret;
+        ret.value = msg->value;
+        ret.key = "0";
+        switch(msg->value)
+        {
+            case 'PID':
+            // todo: 改变 pid
+            ret.key = "1";
+            break;
+            case 'CVER':
+            break;
+            case 'MAC':
+            break;
+        }
+        //TuyaComm::Get()->Publish("Msetr", &ret);
+    }
+};
+
 int main(int argc, char ** argv)
 {
     LOGVERSION("v1.0.14");
@@ -189,7 +232,9 @@ int main(int argc, char ** argv)
         return -1;
     }  
     TuyaComm::Get()->SetLcm(&lcm);
-
+    TestHandler testHandler;
+    TuyaComm::Get()->Subscribe("Mget", &TestHandler::OnGet, &testHandler);
+    TuyaComm::Get()->Subscribe("Mset", &TestHandler::OnSet, &testHandler);
 
 #if defined(TY_BT_MOD) && TY_BT_MOD == 1
     tuya_bt_init();

@@ -1,8 +1,10 @@
 #include <stdint.h>
 #include <vector>
+#include <iostream>
 #include <fstream>
+#include <sstream>
 #include <netinet/in.h>
-
+#include <openssl/md5.h>
 #include "tuya_robot.h"
 
 #include "utils/log_.h"
@@ -21,12 +23,53 @@
 #include "tuya_dp_function.h"
 #include "robot_msg.h"
 #include "voice.h"
-
+#include "curl/curl.h"
 // DP 点
 #undef TAG
 #define TAG "DP"
 
 using json = nlohmann::json;
+
+typedef std::function<int(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)> curl_info_cb;
+
+curl_info_cb global_progress_callback;
+// 包装函数，用于调用 std::function 对象
+int progress_callback_wrapper(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
+    if (global_progress_callback) {
+        return global_progress_callback(clientp, dltotal, dlnow, ultotal, ulnow);
+    }
+    return 0;
+}
+
+int download_file(const char *file_name, const char *url, curl_info_cb info_cb);
+
+// 计算文件的 MD5 哈希值
+std::string md5sum(const std::string& file_path) {
+    unsigned char c[MD5_DIGEST_LENGTH];
+    MD5_CTX mdContext;
+    MD5_Init(&mdContext);
+
+    std::ifstream file(file_path, std::ifstream::binary);
+    if (!file) {
+        LOGD(TAG, "Failed to open file: {}", file_path);
+        return "";
+    }
+
+    char buffer[1024];
+    while (file.good()) {
+        file.read(buffer, sizeof(buffer));
+        MD5_Update(&mdContext, buffer, file.gcount());
+    }
+
+    MD5_Final(c, &mdContext);
+
+    std::ostringstream md5_string;
+    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+        md5_string << std::hex << std::setw(2) << std::setfill('0') << (int)c[i];
+    }
+
+    return md5_string.str();
+}
 
 TY_OBJ_DP_S DPReportBool(int dpId, bool b)
 {
@@ -254,7 +297,7 @@ TY_OBJ_DP_S DP_ReportSeek(int dpId, bool b)
 void DP_HandleSeek(TY_OBJ_DP_S *dp)
 {
     bool b = dp->value.dp_bool;
-    PlayVoice(V_SEEK_ROBOT, PLAY_INTERUPT);
+    PlayVoice(V_SEEK_ROBOT, 3);
 
     TY_OBJ_DP_S d = DP_ReportSeek(dp->dpid, 0);
     dev_report_dp_json_async(NULL, &d, 1);
@@ -638,8 +681,45 @@ void DP_ReportDeviceInfo(int dpId, std::string wifiName, int rssi, std::string i
     dev_report_dp_raw_sync(NULL, dpId, (const uint8_t *)raw.c_str(), raw.length(), 200);
 }
 
+// status: 0x00 为下载失败、0x01 为下载安装中、0x02 为安装成功、0x03 为使用中
+void TuyaReportVoiceDownLoadResult(int dpId, uint8_t version, uint32_t langId, uint32_t fileVersion, uint8_t status, uint8_t schedu)
+{
+   std::vector<uint8_t> raw;
+    raw.push_back(0xAB);
+    raw.push_back(version);
+    raw.push_back(0x00);
+    raw.push_back(0x00);
+    raw.push_back(0x00);
+    raw.push_back(0x00);
+    raw.push_back(0x35);
+    raw.push_back(langId >> 24);
+    raw.push_back(langId >> 16);
+    raw.push_back(langId >> 8);
+    raw.push_back(langId);
+    if(version == 0x01)
+    {
+        raw.push_back(fileVersion >> 24);
+        raw.push_back(fileVersion >> 16);
+        raw.push_back(fileVersion >> 8);
+        raw.push_back(fileVersion);
+    }
+    raw.push_back(status);
+    raw.push_back(schedu);
+    raw[5] = raw.size() - 6;
+    uint8_t sum = 0;
+    for (int i = 6; i < raw.size(); i++)
+    {
+        sum += raw[i];
+    }
+    raw.push_back(sum);
+    LOGD(TAG, "Send: {}", spdlog::to_hex(raw.begin(), raw.end()));
+    DPRaw_Send(dpId, &raw[0], raw.size(), 100);
+}
+
 void DPRaw_HandleVoiceData(int dpId, uint8_t *data, int len)
 {
+    LOGD(TAG, "DPRaw_HandleVoiceData : {}", spdlog::to_hex(data, data + len));
+    DPRaw_HandleCommand(dpId, data, len);
 }
 
 void DP_HandleLanguage(TY_OBJ_DP_S *dp)
@@ -992,14 +1072,21 @@ void DP_HandleUploadLogs(TY_OBJ_DP_S *dp)
 {
     bool b = dp->value.dp_bool;
     LOGD(TAG, "{}上传日志", b ? "开启" : "关闭");
-    TY_OBJ_DP_S d = DPReportBool(dp->dpid, b);
-    dev_report_dp_json_async(NULL, &d, 1);
-    tuya_message::Request req = {b};
-    tuya_message::Result res = {};
-    TuyaComm::Get()->Send("ty_upload_logs", &req, &res);
-    sleep(1);
-    d = DPReportBool(dp->dpid, 0);
-    dev_report_dp_json_async(NULL, &d, 1);
+    if(b)
+    {
+        TY_OBJ_DP_S d = DPReportBool(dp->dpid, b);
+        dev_report_dp_json_async(NULL, &d, 1);
+        d = DPReportBool(dp->dpid, 0);
+        // tuya_message::Request req = {b};
+        // tuya_message::Result res = {};
+        // TuyaComm::Get()->Send("ty_upload_logs", &req, &res);
+        std::function<void()> f = [d]() {
+            system("./logupdate.sh");
+            sleep(3);
+            dev_report_dp_json_async(NULL, &d, 1);
+        };
+        std::thread(f).detach();
+    }
 }
 
 /*
@@ -1031,6 +1118,23 @@ void DP_HandleKeyLightDisplaySwitch(TY_OBJ_DP_S *dp)
     tuya_message::Request req = {b};
     tuya_message::Result res = {};
     if(TuyaComm::Get()->Send("ty_key_light_onoff", &req, &res))
+    {
+        TY_OBJ_DP_S d = DPReportBool(dp->dpid, b);
+        dev_report_dp_json_async(NULL, &d, 1);
+    }
+    else
+    {
+        LOGE(TAG, "功能无实现");
+    }
+}
+
+void DP_HandleStationLightDisplaySwitch(TY_OBJ_DP_S *dp)
+{
+    bool b = dp->value.dp_bool;
+    LOGD(TAG, "{}基站灯显", b ? "开启" : "关闭");
+    tuya_message::Request req = {b};
+    tuya_message::Result res = {};
+    if(TuyaComm::Get()->Send("ty_station_light_onoff", &req, &res))
     {
         TY_OBJ_DP_S d = DPReportBool(dp->dpid, b);
         dev_report_dp_json_async(NULL, &d, 1);
@@ -2098,10 +2202,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             {
                 AppZoneClean zone;
                 zone.version = 0;
-                zone.cleanRepeat.push_back(data[4]);
-                zone.order.push_back(0);
-                zone.mode.push_back(0);
-                zone.suction.push_back(0);
+ 
                 zone.count = data[5];
                 uint8_t *start = &data[6];
 
@@ -2118,28 +2219,34 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                         polygon.vetex.push_back(TuyaXYToMars(x, y));
                     }
                     zone.zone.emplace_back(polygon);
+
+                    zone.cleanRepeat.push_back(data[4]);
+                    zone.order.push_back(0);
+                    zone.mode.push_back(0);
+                    zone.suction.push_back(0);
                 }
 
                 if (zone.zone.empty())
                     zone.zone.resize(1);
                 if (zone.name.empty())
-                    zone.name.resize(1);
+                    zone.name.resize(zone.count);
                 if (zone.zoneID.empty())
-                    zone.zoneID.resize(1);
+                    zone.zoneID.resize(zone.count);
                 if (zone.localSave.empty())
-                    zone.localSave.resize(1);
+                    zone.localSave.resize(zone.count);
                 if (zone.type.empty())
-                    zone.type.resize(1);
+                    zone.type.resize(zone.count);
                 if (zone.mode.empty())
-                    zone.mode.resize(1);
+                    zone.mode.resize(zone.count);
                 if (zone.suction.empty())
-                    zone.suction.resize(1);
+                    zone.suction.resize(zone.count);
                 if (zone.cistern.empty())
-                    zone.cistern.resize(1);
+                    zone.cistern.resize(zone.count);
                 if (zone.cleanRepeat.empty())
-                    zone.cleanRepeat.resize(1);
+                    zone.cleanRepeat.resize(zone.count);
                 if (zone.order.empty())
-                    zone.order.resize(1);
+                    zone.order.resize(zone.count);
+                
 
                 tuya_message::Result res;
                 LOGL(TAG);
@@ -2780,9 +2887,169 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
     }
     break;
     case 0x34: // 语音包下载
+    {
         LOGD(TAG, "语音包下载");
-        break;
+        uint8_t version = data[1];
+        uint32_t langId = nbto32(&data[7]);
+        uint8_t ds = 11;
+        uint32_t fileVersion = 0;
+        if(version == 0x01)
+        {
+            fileVersion = nbto32(&data[ds]);
+            ds = 15;
+        }
+        uint8_t md5Len = data[ds];
+        std::string md5((char *)&data[ds+1], md5Len);
+        LOGD(TAG, "语音包下载 langId:{}, fileVersion:{}, md5:{}", langId, fileVersion, md5);
+        uint32_t urlLen = nbto32(&data[ds+1 + md5Len]);
+        std::string url((char *)&data[ds+5 + md5Len], urlLen);
+        LOGD(TAG, "语音包下载 url:{}", url);
+        // 如果存在这个语音包，直接使用
+        if (access(("/data/voice/" + std::to_string(langId)).c_str(), F_OK) == 0) {
+            std::ifstream verFile("/data/voice/" + std::to_string(langId) + "/ver.txt");
+            if (verFile.is_open()) {
+                std::string line;
+                std::getline(verFile, line);
+                verFile.close();
+                if (std::to_string(fileVersion) == line) {
+                    LOGD(TAG, "语音包已存在且版本 {} 相同", fileVersion);
+                    system("rm -rf /data/voice/now");
+                    system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
+                    TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x03, 0);
+                    PlayVoice(V_SEEK_ROBOT, 0);
+                    return;
+                }
+            }
+            return;
+        }
+
+        std::string file_name;
+        size_t pos = url.find_last_of("/");
+        if (pos != std::string::npos) {
+            file_name = url.substr(pos + 1);
+        }
+        if (file_name.empty()) {
+            file_name = "voice.zip";
+        }
+        system("mkdir -p /data/voice");
+        file_name = "/data/voice" + file_name;
+        if(download_file(file_name.c_str(), url.c_str(), [dpId, version, langId, fileVersion](void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) -> int
+        {
+            if(dltotal != 0)
+            {
+                LOGD(TAG, "{}/{} {}%", dlnow, dltotal, 100 * dlnow / dltotal);
+                static int last_process = 0;
+                int process = 100 * dlnow / dltotal;
+                if(process % 10 == 0 && process != last_process)
+                {
+                    last_process = process;
+                    TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x01, process);
+                }
+            }
+            return 0;
+        }) == 0)
+        {
+            TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x01, 100);
+            // 获取文件 md5
+            std::string md5_file = md5sum(file_name.c_str());
+            if(md5_file == md5)
+            {
+                LOGD(TAG, "语音包下载成功");
+                // 获取文件扩展名
+                std::string ext = file_name.substr(file_name.find_last_of(".") + 1);
+                int err = 0;
+                if(ext == "gz")
+                {
+                    err += system(("tar -zxf " + file_name + " -C /data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("rm " + file_name).c_str());
+                    err += system(("mv /data/voice/" + std::to_string(langId) + "/*/* " + "/data/voice/" + std::to_string(langId)).c_str());
+                    // 写入版本信息
+                    err += system(("echo " + std::to_string(fileVersion) + " > " + "/data/voice/" + std::to_string(langId) + "/ver.txt").c_str());
+                    err += system("rm -rf /data/voice/now");
+                    err += system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
+                    err += system(("echo " + std::to_string(langId) + " > " + "/data/voice/" + "/now.txt").c_str());
+                    //TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x02, 0);
+                }
+                else if(ext == "zip")
+                {
+                    err += system(("unzip -o " + file_name + " -d /data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("rm " + file_name).c_str());
+                    err += system(("mv /data/voice/" + std::to_string(langId) + "/*/* " + "/data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("echo " + std::to_string(fileVersion) + " > " + "/data/voice/" + std::to_string(langId) + "/ver.txt").c_str());
+                    err += system("rm -rf /data/voice/now");
+                    err += system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
+                    err += system(("echo " + std::to_string(langId) + " > " + "/data/voice/" + "/now.txt").c_str());
+                    //TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x02, 0);
+                }
+
+                if(err == 0)
+                {
+                    TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x03, 0);
+                    PlayVoice(V_SEEK_ROBOT, 0);
+                }
+                else
+                {
+                    LOGD(TAG, "语音包解压失败");
+                    TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x00, 0);
+                }
+            }
+            else
+            {
+                LOGD(TAG, "语音包下载失败 md5:{}, {}", md5_file, md5);
+                TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x00, 0);
+            }
+        }
+    }
+    break;
     default:
         break;
     }
+}
+
+/*
+* 使用 CURLOPT_XFERINFODATA 属性来传递该函数。
+* dltotal：需要下载的总字节数
+* ultotal：需要上传的总字节数
+* dlnow：已经下载的字节数
+* ulnow：已经上传的字节数
+* return：返回非 0 值将会中断传输。
+*   
+*/
+
+size_t write_callback(void *ptr, size_t size, size_t nmemb, void *stream)
+{
+	return fwrite(ptr, size, nmemb, (FILE*)stream);
+}
+
+int download_file(const char *file_name, const char *url, curl_info_cb info_cb)
+{
+	FILE *fp = fopen(file_name, "wb");
+	if(!fp){
+		LOGE(TAG, "open file %s fail.\n", file_name);
+		return -1;
+	}
+	CURL *curl = curl_easy_init();
+	if(!curl){
+		LOGE(TAG, "curl easy init fail.\n");
+		fclose(fp);
+		return -1;
+	}
+    global_progress_callback = info_cb;
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+	curl_easy_setopt(curl, CURLOPT_XFERINFODATA, NULL);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback_wrapper);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+	curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    LOGL(TAG);
+	CURLcode ret = curl_easy_perform(curl);
+	if(ret != CURLE_OK){
+		LOGE(TAG, "curl_easy_perform download fail, reason : %s.\n", curl_easy_strerror(ret));
+	}
+	fclose(fp);
+	curl_easy_cleanup(curl);
+	curl_global_cleanup();
+	return ret;
 }

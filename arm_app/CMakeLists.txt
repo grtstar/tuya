@@ -62,7 +62,7 @@ target_link_libraries(${PROJECT_NAME} spdlog::spdlog_header_only)
 # lcm
 target_link_libraries(${PROJECT_NAME} lcm)
 # tuya
-target_link_libraries(${PROJECT_NAME} tuya_iot)
+target_link_libraries(${PROJECT_NAME} tuyaos)
 # deviceio
 #target_link_libraries(${PROJECT_NAME} DeviceIo)
 #target_link_libraries(${PROJECT_NAME} asound)
@@ -72,3 +72,11 @@ target_link_libraries(${PROJECT_NAME} bluetooth shared)
 target_link_libraries(${PROJECT_NAME} libnl-3.a libnl-genl-3.a)
 # wpa
 target_link_libraries(${PROJECT_NAME} libwpa_client_64.a)
+# curl
+target_link_libraries(${PROJECT_NAME} curl)
+# ssl
+target_link_libraries(${PROJECT_NAME} ssl)
+# rtmp
+target_link_libraries(${PROJECT_NAME} rtmp)
+# crypto
+target_link_libraries(${PROJECT_NAME} crypto)

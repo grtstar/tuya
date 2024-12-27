@@ -458,11 +458,9 @@ STATIC VOID* tuya_ipc_sdk_mqtt_online_proc(PVOID_T arg)
     snprintf(cmd, 256, "date -s @%ld", time_utc + time_zone);
     system(cmd);
     // 设置系统时区
-
-
-    char tz_cmd[64];
-    snprintf(tz_cmd, sizeof(tz_cmd), "timedatectl set-timezone Etc/GMT%+d", -time_zone);
-    system(tz_cmd);
+    // char tz_cmd[64];
+    // snprintf(tz_cmd, sizeof(tz_cmd), "timedatectl set-timezone Etc/GMT%+d", -time_zone);
+    // system(tz_cmd);
 
 
     tuya_ipc_sdk_p2p_init();            // 初始化 p2p

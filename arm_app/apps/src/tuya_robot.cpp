@@ -100,6 +100,7 @@ std::map<int, TuyaType> DpType =
     {51, TuyaTypeValue},
     {101, TuyaTypeEnum},
     {102, TuyaTypeBool},
+    {103, TuyaTypeBool},
     {107, TuyaTypeValue},
     {147, TuyaTypeBool},
     {149, TuyaTypeBool},
@@ -206,7 +207,8 @@ TuyaDPHandler _dpHandler[] =
     {52, DP_HandleMopSlefCleaningStrength},
     {53, DP_HandleWipingStrength},
     {101, DP_HandleAvoidObsMode},
-    {102, DP_HandleKeyLightDisplaySwitch},
+    {102, DP_HandleStationLightDisplaySwitch},
+    {103, DP_HandleKeyLightDisplaySwitch},
     {107, DP_HandleStationHotFanTime},
     {147, DP_HandleStationHotFan},
     {149, DP_HandleStationHotWater},
@@ -355,6 +357,10 @@ void TuyaReportStatus(tuya_message::RobotState status)
     dps.emplace_back(DPReport(53, status.land_strength));
     // 101 避障模式
     dps.emplace_back(DPReport(101, status.smart_collision));
+    // 102
+    dps.emplace_back(DPReport(102, status.extra_dp[1]));
+    // 103
+    dps.emplace_back(DPReport(103, status.extra_dp[0]));
     // 107 基站热风时间
     dps.emplace_back(DPReport(107, status.mop_drying_timee));
     // 147 基站热风
@@ -444,19 +450,19 @@ void TuyaComm::OnPartsLife(const lcm::ReceiveBuffer *rbuf, const std::string &ch
     std::vector<TY_OBJ_DP_S> dps;
     if (partsLife.edgeBrushLifeMinutes != msg->edgeBrushLifeMinutes)
     {
-        dps.emplace_back(DPReport(17, msg->edgeBrushLifeMinutes));
+        dps.emplace_back(DPReport(17, msg->edgeBrushLifeMinutes / 60));
     }
     if (partsLife.haipaLifeMinutes != msg->haipaLifeMinutes)
     {
-        dps.emplace_back(DPReport(21, msg->haipaLifeMinutes));
+        dps.emplace_back(DPReport(21, msg->haipaLifeMinutes / 60));
     }
     if (partsLife.mainBrushLifeMinutes != msg->mainBrushLifeMinutes)
     {
-        dps.emplace_back(DPReport(19, msg->mainBrushLifeMinutes));
+        dps.emplace_back(DPReport(19, msg->mainBrushLifeMinutes / 60));
     }
     if (partsLife.ragLifeMinutes != msg->ragLifeMinutes)
     {
-        dps.emplace_back(DPReport(23, msg->ragLifeMinutes));
+        dps.emplace_back(DPReport(23, msg->ragLifeMinutes / 60));
     }
     if (!dps.empty())
     {
@@ -538,6 +544,11 @@ void TuyaComm::OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &
     ReportCleanRecords(msg->recordId, msg->cleanTimeSecond/60.0 + 0.5, msg->cleanArea, (msg->cleanMode), ((CleanMethod)msg->cleanMethod), msg->finishResult, msg->startReason);
 }
 
+void TuyaComm::OnSchedule(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppLocalAlert *msg)
+{
+    TuyaReportLocalAlert(32, msg->verison == 0 ? 0x31 : 0x45, (AppLocalAlert *)msg);
+}
+
 void TuyaComm::OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg)
 {
     LOGD(TAG, "Event: {}", M2S(msg->event));
@@ -600,10 +611,10 @@ void TuyaComm::ReportPartsLife()
     if(Send("ty_get_parts_life", &req, &life))
     {
         AppPartsLife *msg = &life;
-        dps.emplace_back(DPReport(17, msg->edgeBrushLifeMinutes));
-        dps.emplace_back(DPReport(19, msg->mainBrushLifeMinutes));
-        dps.emplace_back(DPReport(21, msg->haipaLifeMinutes));
-        dps.emplace_back(DPReport(23, msg->ragLifeMinutes));
+        dps.emplace_back(DPReport(17, msg->edgeBrushLifeMinutes/60));
+        dps.emplace_back(DPReport(19, msg->mainBrushLifeMinutes/60));
+        dps.emplace_back(DPReport(21, msg->haipaLifeMinutes/60));
+        dps.emplace_back(DPReport(23, msg->ragLifeMinutes/60));
         if (!dps.empty())
         {
             dev_report_dp_json_async(NULL, &dps[0], dps.size());
@@ -804,6 +815,15 @@ void TuyaComm::ReportAll()
 {
     // 上报定时
     AppLocalAlert alert;
+    tuya_message::Request req = {};
+    if(Send("ty_get_m_orders", &req, &alert) && alert.verison >= 0)
+    {   
+        TuyaReportLocalAlert(32, alert.verison == 0 ? 0x31 : 0x45, &alert);
+    } 
+    else
+    {
+        LOGE(TAG, "无法获取到本地定时信息");
+    }
     // alert.verison = -1;
     // alert.number = 1;
     // alert.timedTaskInfo.resize(1);
@@ -821,7 +841,6 @@ void TuyaComm::ReportAll()
 
     // 上报勿扰时间
     AppNotDisturbTime disturb;
-    tuya_message::Request req = {};
     if(Send("ty_get_dnd", &req, &disturb) && disturb.version >= 0)
     {   
         TuyaReportNotDisturbTime(33, disturb.version==0 ? 0x33 : 0x41, &disturb);
