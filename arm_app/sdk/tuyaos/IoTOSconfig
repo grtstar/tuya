@@ -1,0 +1,14 @@
+mainmenu "Tuya Linux BSP Configuration"
+
+config TUYA_DEFCONFIG
+	string
+	default "$(TUYA_DEFCONFIG)"
+
+config TUYA_PRODUCT_RELEASE_NAME
+        string "Release Archive Name"
+        default "x86_64"
+
+
+osource "components/*/Config.legacy"
+
+osource "components/*/IoTOSconfig"
