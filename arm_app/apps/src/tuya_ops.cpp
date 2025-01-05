@@ -23,6 +23,7 @@
 #include "tuya_robot.h"
 #include "utils/json.hpp"
 #include "utils/shell.hpp"
+//#include "utils/log_.h"
 #include "voice.h"
 #include "tuya_utils.h"
 
@@ -75,7 +76,7 @@ VOID IPC_APP_Notify_LED_Sound_Status_CB(IPC_APP_NOTIFY_EVENT_E notify_event)
 
 VOID IPC_APP_Reset_System_CB(GW_RESET_TYPE_E type)
 {
-    printf("reset ipc success. please restart the ipc %d\n", type);
+    printf("reset ipc success. please restart the ipc %d", (int)type);
     IPC_APP_Notify_LED_Sound_Status_CB(IPC_RESET_SUCCESS);
     //TODO
     /* Developers need to restart IPC operations */
@@ -340,6 +341,7 @@ OPERATE_RET __IPC_APP_get_file_data_cb(IN CONST FW_UG_S *fw, IN CONST UINT_T tot
     return OPRT_OK;
 }
 
+extern tuya_message::RobotState sweeper;
 INT_T IPC_APP_Upgrade_Inform_cb(IN CONST FW_UG_S *fw)
 {
     PR_DEBUG("Rev Upgrade Info");
@@ -347,9 +349,13 @@ INT_T IPC_APP_Upgrade_Inform_cb(IN CONST FW_UG_S *fw)
     //PR_DEBUG("fw->fw_md5:%s", fw->fw_md5);
     PR_DEBUG("fw->sw_ver:%s", fw->sw_ver);
     PR_DEBUG("fw->file_size:%u", fw->file_size);
-    PlayVoice(V_START_UPDATE, 0);
-    FILE *p_upgrade_fd = fopen(s_mgr_info.upgrade_file_path, "w+b");
-    return tuya_ipc_upgrade_sdk(fw, __IPC_APP_get_file_data_cb, __IPC_APP_upgrade_notify_cb, p_upgrade_fd);
+    if((sweeper.status == 10  || sweeper.status == 11) && sweeper.battery >= 30)
+    {
+        PlayVoice(V_START_UPDATE, 0);
+        FILE *p_upgrade_fd = fopen(s_mgr_info.upgrade_file_path, "w+b");
+        return tuya_ipc_upgrade_sdk(fw, __IPC_APP_get_file_data_cb, __IPC_APP_upgrade_notify_cb, p_upgrade_fd);
+    }
+    return OPRT_COM_ERROR;
 }
 
 

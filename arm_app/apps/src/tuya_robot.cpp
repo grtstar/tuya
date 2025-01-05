@@ -270,12 +270,13 @@ TY_OBJ_DP_S DPReport(int dpId, int32_t value)
     return DPReportValue(dpId, value);
 }
 
+tuya_message::RobotState sweeper = {0};
+
 void TuyaReportStatus(tuya_message::RobotState status)
 {
     nlohmann::json j = status;
     LOGD(TAG, "ReportStatus: {}", j.dump(2));
 
-    static tuya_message::RobotState sweeper = {0};
     std::vector<TY_OBJ_DP_S> dps;
     // 1 清扫开关
     dps.emplace_back(DPReport(1, status.switch_go));
@@ -650,18 +651,6 @@ void TuyaComm::ReportCleanInfo()
     {
         LOGE(TAG, "无法获取到 CleanInfo");
     }
-    // 上报清扫顺序
-    LOGD(TAG, "ReportCleanSequence");
-    AppSetCleaningSequence order = {};
-    if(Send("ty_get_cleaning_sequence", &req, &order))
-    {
-        TuyaReportCleaningSequence(GetRawDpId(DPRaw_HandleCommand), 0x27, &order);
-    }
-    else
-    {
-        LOGE(TAG, "无法获取到 CleanSequence");
-    }
-
 }
 
 void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod) 
@@ -778,18 +767,7 @@ void TuyaComm::ReportMapAll()
     {
         LOGE(TAG, "无法获取到划区信息");
     }
-#if 0
-    // 上报房间属性
-    AppSetRoomProperties room_properties;
-    if(Send("ty_get_room_properties", &req, &room_properties))
-    {
-        TuyaReportRoomProperties(GetRawDpId(DPRaw_HandleCommand), 0x23, &room_properties);
-    }
-    else
-    {
-        LOGE(TAG, "无法获取到房间属性信息");
-    }
-#endif
+
     AppRoomClean room;
     if(Send("ty_get_clean_blocks", &req, &room) && room.count > 0)
     {
@@ -809,6 +787,30 @@ void TuyaComm::ReportMapAll()
     {
         LOGE(TAG, "无法获取到虚拟墙信息");
     }
+#if 0
+    // 上报清扫顺序
+    LOGD(TAG, "ReportCleanSequence");
+    AppSetCleaningSequence order = {};
+    if(Send("ty_get_cleaning_sequence", &req, &order))
+    {
+        TuyaReportCleaningSequence(GetRawDpId(DPRaw_HandleCommand), 0x27, &order);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到 CleanSequence");
+    }
+
+    // 上报房间属性
+    AppSetRoomProperties room_properties;
+    if(Send("ty_get_room_properties", &req, &room_properties))
+    {
+        TuyaReportRoomProperties(GetRawDpId(DPRaw_HandleCommand), 0x23, &room_properties);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到房间属性信息");
+    }
+#endif
 }
 
 void TuyaComm::ReportAll()

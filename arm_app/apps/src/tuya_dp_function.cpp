@@ -297,7 +297,7 @@ TY_OBJ_DP_S DP_ReportSeek(int dpId, bool b)
 void DP_HandleSeek(TY_OBJ_DP_S *dp)
 {
     bool b = dp->value.dp_bool;
-    PlayVoice(V_SEEK_ROBOT, 3);
+    PlayVoice(V_SEEK_ROBOT, 1);
 
     TY_OBJ_DP_S d = DP_ReportSeek(dp->dpid, 0);
     dev_report_dp_json_async(NULL, &d, 1);

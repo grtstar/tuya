@@ -1059,6 +1059,13 @@ static int wpas_select_network(wifi_sta_cn_para_t *cn_para, char *netid)
 		return WMG_STATUS_FAIL;
 	}
 
+	sprintf(cmd, "SET_NETWORK %s scan_ssid 1", netid);
+	ret = command_to_supplicant(cmd, reply, sizeof(reply));
+	if (ret) {
+		LOGE("failed to set network scan_ssid '%s', reply %s\n", cn_para->ssid, reply);
+		return WMG_STATUS_FAIL;
+	}
+
 	switch (cn_para->sec) {
 	case WIFI_SEC_NONE:
 		sprintf(cmd, "SET_NETWORK %s key_mgmt NONE", netid);

@@ -62,7 +62,7 @@ target_link_libraries(${PROJECT_NAME} spdlog::spdlog_header_only)
 # lcm
 target_link_libraries(${PROJECT_NAME} lcm)
 # tuya
-target_link_libraries(${PROJECT_NAME} tuyaos)
+target_link_libraries(${PROJECT_NAME} tuya_iot)
 # deviceio
 #target_link_libraries(${PROJECT_NAME} DeviceIo)
 #target_link_libraries(${PROJECT_NAME} asound)
