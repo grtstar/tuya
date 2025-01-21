@@ -276,6 +276,7 @@ void TuyaReportStatus(tuya_message::RobotState status)
 {
     nlohmann::json j = status;
     LOGD(TAG, "ReportStatus: {}", j.dump(2));
+    sweeper = status;
 
     std::vector<TY_OBJ_DP_S> dps;
     // 1 清扫开关

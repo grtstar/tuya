@@ -349,7 +349,7 @@ INT_T IPC_APP_Upgrade_Inform_cb(IN CONST FW_UG_S *fw)
     //PR_DEBUG("fw->fw_md5:%s", fw->fw_md5);
     PR_DEBUG("fw->sw_ver:%s", fw->sw_ver);
     PR_DEBUG("fw->file_size:%u", fw->file_size);
-    if((sweeper.status == 10  || sweeper.status == 11) && sweeper.battery >= 30)
+    //if((sweeper.status == 10  || sweeper.status == 11) && sweeper.battery >= 30)
     {
         PlayVoice(V_START_UPDATE, 0);
         FILE *p_upgrade_fd = fopen(s_mgr_info.upgrade_file_path, "w+b");

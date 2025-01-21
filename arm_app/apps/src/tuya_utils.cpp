@@ -24,11 +24,11 @@ Point TuyaXYToMars(int x, int y)
 
 int MarsXToTuya(Point p)
 {
-    return p.x * 10 / _mapResolution;
+    return std::round(p.x * 10 / _mapResolution);
 }
 int MarsYToTuya(Point p)
 {
-    return p.y * 10 / _mapResolution;
+    return std::round(p.y * 10 / _mapResolution);
 }
 
 bool TuyaLoadKey(const char *path, std::string &id, std::string &uuid, std::string &authKey)
