@@ -10,8 +10,11 @@
 #include "lz4/lz4.h"
 
 #include "tuya_cloud_com_defs.h"
-#include "tuya_iot_com_api.h"
+#include "tuya_error_code.h"
 #include "tuya_iot_wifi_api.h"
+#include "tuya_sdk_dp_demo.h"
+#include "tuya_sdk_app_reset_demo.h"
+
 #define __NLOHMANN_JSON_CPP
 #include "robot_msg.h"
 #include "voice.h"
@@ -245,10 +248,10 @@ void TuyaHandleDPCmd(TY_OBJ_DP_S *dp)
 #include "tuya_hal_wifi.h"
 extern "C"
 {
-    OPERATE_RET tuya_adapter_wifi_get_ip(IN CONST WF_IF_E wf, OUT NW_IP_S *ip);
-    OPERATE_RET tuya_adapter_wifi_get_mac(IN CONST WF_IF_E wf, INOUT NW_MAC_S *mac);
-    OPERATE_RET tuya_adapter_wifi_station_get_conn_ap_rssi(OUT SCHAR_T *rssi);
-    OPERATE_RET tuya_adapter_wifi_get_ssid(char *ssid);
+    OPERATE_RET tkl_wifi_get_ip(IN CONST WF_IF_E wf, OUT NW_IP_S *ip);
+    OPERATE_RET tkl_wifi_get_mac(IN CONST WF_IF_E wf, INOUT NW_MAC_S *mac);
+    OPERATE_RET tkl_wifi_station_get_conn_ap_rssi(OUT SCHAR_T *rssi);
+    OPERATE_RET tkl_wifi_get_ssid(char *ssid);
 }
 
 TY_OBJ_DP_S DPReport(int dpId, int32_t value)
@@ -390,20 +393,20 @@ void TuyaReportStatus(tuya_message::RobotState status)
         lastDeviceInfoTime = TimeTick::Ms();
 
         char ssid[128] = {0};
-        tuya_adapter_wifi_get_ssid(ssid);
+        tkl_wifi_get_ssid(ssid);
         std::string wifiName = ssid;
 
         int rssi = 0;
         SCHAR_T rssiT;
-        tuya_adapter_wifi_station_get_conn_ap_rssi(&rssiT);
+        tkl_wifi_station_get_conn_ap_rssi(&rssiT);
 
         NW_IP_S ips = {0};
-        tuya_adapter_wifi_get_ip(WF_STATION, &ips);
+        tkl_wifi_get_ip(WF_STATION, &ips);
         std::string ip = ips.ip;
 
         NW_MAC_S macs = {0};
         char macStr[32] = {0};
-        tuya_adapter_wifi_get_mac(WF_STATION, &macs);
+        tkl_wifi_get_mac(WF_STATION, &macs);
         sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", macs.mac[0], macs.mac[1], macs.mac[2], macs.mac[3], macs.mac[4], macs.mac[5]);
         std::string mac = macStr;
         std::string mcuVersion = MCU_version;
@@ -735,16 +738,16 @@ void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, in
     combinedData.insert(combinedData.end(), tuyaVirtualWall.begin(), tuyaVirtualWall.end());
     combinedData.insert(combinedData.end(), tuyaRestrictedArea.begin(), tuyaRestrictedArea.end());
 
-    OPERATE_RET op_ret = tuya_iot_map_record_upload_buffer(
-        recordId, combinedData.data(), combinedData.size(), ((strlen(descript) == 0) ? NULL : descript));
-    if (op_ret == OPRT_OK) 
-    {
-        LOGD(TAG, "upload map id:{} record files OK", recordId);
-    } else 
-    {
-        LOGE(TAG, "upload map id:{} record files fail, ret {}", recordId,
-           op_ret);
-    }
+    // OPERATE_RET op_ret = tuya_iot_map_record_upload_buffer(
+    //     recordId, combinedData.data(), combinedData.size(), ((strlen(descript) == 0) ? NULL : descript));
+    // if (op_ret == OPRT_OK) 
+    // {
+    //     LOGD(TAG, "upload map id:{} record files OK", recordId);
+    // } else 
+    // {
+    //     LOGE(TAG, "upload map id:{} record files fail, ret {}", recordId,
+    //        op_ret);
+    // }
 }
 
 void TuyaComm::ReportMap()
@@ -855,4 +858,151 @@ void TuyaComm::ReportAll()
     ReportPartsLife();
     ReportCleanInfo();
     ReportMapAll();
+}
+
+/**
+ * @brief  接收到 sdk obj dp 处理回调，注册到 SDK 中
+ * @param  [TY_SDK_RECV_OBJ_DP_S] *dp_rev
+ * @return [*]
+ */
+VOID ty_cmd_handle_dp_cmd_objs(IN CONST TY_RECV_OBJ_DP_S* dp_rev)
+{
+    PR_DEBUG("[user cmd]recv cmd dp");
+    for(int i=0; i<dp_rev->dps_cnt; i++)
+    {
+        TuyaHandleDPCmd((TY_OBJ_DP_S *)&dp_rev->dps[i]);
+    }
+}
+
+/**
+ * @brief  接收到 sdk raw dp 处理回调，注册到 SDK 中
+ * @param  [TY_SDK_RECV_OBJ_DP_S] *dp_rev
+ * @return [*]
+ */
+VOID ty_cmd_handle_dp_raw_objs(IN CONST TY_RECV_RAW_DP_S* dp_rev)
+{
+    PR_DEBUG("[user raw cmd]recv cmd dp");
+    TuyaHandleRawDPCmd(dp_rev->dpid, (uint8_t *)dp_rev->data, dp_rev->len);
+}
+
+/**
+ * @brief  接收到 sdk query dp 处理回调，注册到 SDK 中
+ * @param  [TY_SDK_RECV_OBJ_DP_S] *dp_rev
+ * @return [*]
+ */
+VOID ty_cmd_handle_dp_query_objs(IN CONST TY_DP_QUERY_S* dp_query)
+{
+    PR_DEBUG("[user cmd]recv query dp");
+    TuyaComm::Get()->ReportStatus();
+}
+
+/**
+ * @brief  设备上线上报相关信息
+ * @param  [*]
+ * @return [*]
+ */
+void ty_cmd_handle_sync_to_cloud(void)
+{
+    /***attention：
+     * 当网络连接成功后，需要将机器内的数据进行上传同步
+     * ***/
+   TuyaComm::Get()->ReportAll();
+}
+
+
+/**
+ * @brief  APP 或者本地移除设备 SDK 结果回调
+ * @param  [GW_RESET_TYPE_E] type -> 重置的原因
+ * @return [*]
+ */
+VOID ty_sdk_app_reset_cb(GW_RESET_TYPE_E type)
+{
+    PR_DEBUG(" gw reset success. please restart the %d\n", type);
+    switch (type) {
+    case GW_LOCAL_RESET_FACTORY: //本地恢复出厂设置
+        //清除必要的业务数据，注意不必删除 db 文件
+        //注意需要重启设备
+        break;
+    case GW_REMOTE_RESET_FACTORY: // APP 下发移除设备并清除数据
+        //清除必要的业务数据，注意不必删除 db 文件
+        //注意需要重启设备
+        break;
+    case GW_LOCAL_UNACTIVE: //本地重置
+        //取消清扫任务控制
+        //开发者自行业务上做逻辑，如灯效，声音等
+        //注意需要重启设备
+        break;
+    case GW_REMOTE_UNACTIVE: // APP 重置
+        //取消清扫任务控制
+        //开发者自行业务上做逻辑，如灯效，声音等
+        //注意需要重启设备
+        break;
+    case GW_RESET_DATA_FACTORY: // 激活时数据重置
+        /**
+         * App 执行 `解绑并清除数据` 重置时，或者重新配网的 App 账户与原 App 账户不是同一个家庭账号，则
+         * 激活时会收到该类型。提醒开发者清除下本地数据，如果您在重新配网前未做过数据清除。
+         */
+        break;
+
+    default:
+        break;
+    }
+    return;
+    /***开发者根据收到的重置类型，通过事件的形式发送出去，在业务上建立独立任务处理。不要在回调里做复杂事情****/
+}
+
+/**
+ * @brief  设备激活状态
+ * @param  [in] GW_STATUS_E 激活状态
+ * @return [*]
+ */
+VOID ty_sdk_dev_status_changed_cb(IN CONST GW_STATUS_E status)
+{
+    PR_DEBUG("sdk internal restart request. please restart the %d\n", status);
+    if (status == GW_ACTIVED) { //激活成功
+        //开发者可以根据激活状态来判断设备是否成功激活
+    }
+    /***开发者可以在该回调中获取设备激活状态****/
+}
+
+
+/**
+ * @brief  SD 卡式化状态上报
+ * @param  [int] status 状态
+ * @return [*]
+ */
+void dp_handle_report_sd_format_status(int status)
+{
+}
+
+/**
+ * @brief  SD 卡存储容量上报
+ * @param  []
+ * @return [*]
+ */
+void dp_handle_sd_storage_response(void)
+{
+    char tmp_str[100] = { 0 };
+
+    int total = 0;
+    int used = 0;
+    int empty = 0;
+    //tuya_robot_get_sd_storage(&total, &used, &empty); //获取 SD 容量
+
+    //"total capacity|Current usage|remaining capacity"
+    snprintf(tmp_str, 100, "%u|%u|%u", total, used, empty);
+    //respone_dp_str(TUYA_DP_SD_STORAGE_ONLY_GET, tmp_str);
+}
+
+/**
+ * @brief  SD status DP 设置 & 回复
+ * @param  [ROBOT_SD_STATUS_E] sd_status
+ * @return [*]
+ */
+void dp_handle_sd_status_response(ROBOT_SD_STATUS_E sd_status)
+{
+    if ((sd_status < DP_SD_ST_NULL) || (sd_status >= DP_SD_ST_MAX)) {
+        return;
+    }
+    //respone_dp_value(TUYA_DP_SD_STATUS_ONLY_GET, sd_status);
 }

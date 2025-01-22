@@ -12,10 +12,7 @@
 #include "lz4/lz4.h"
 
 #include "tuya_cloud_com_defs.h"
-#include "tuya_iot_com_api.h"
-#include "tuya_iot_sweeper_api.h"
-#include "tuya_devos_netlink.h"
-#include "tuya_iot_com_api.h"
+#include "tuyaos_sweeper_api.h"
 
 #include "tuya.h"
 #include "tuya_enums.h"
@@ -27,6 +24,17 @@
 // DP 点
 #undef TAG
 #define TAG "DP"
+
+
+#include "voice.h"
+#include "mars_message/Event.hpp"
+void PlayVoice(int v, int param)
+{
+    Event voice;
+    voice.event = v;
+    voice.param = param;
+    TuyaComm::Get()->Publish("Voice", &voice);
+}
 
 using json = nlohmann::json;
 

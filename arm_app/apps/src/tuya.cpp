@@ -32,12 +32,26 @@ using namespace mars_message;
 #include "utilities/uni_log.h"
 #include "tuya_robot_sdk_init.h"
 #include "tuya_bt.h"
+
+#define TY_ROBOT_MEDIA_ENABLE  1           //打开音视频开关
 #if defined(TY_ROBOT_MEDIA_ENABLE) && (TY_ROBOT_MEDIA_ENABLE == 1)
 #include "tuya_ipc_cloud_storage.h"
 #include "tuya_ipc_stream_storage.h"
 #include "tuya_sdk_media_demo.h"
 #include "tuya_sdk_sd_card_demo.h"
+#include "tuya_sdk_storage_demo.h"
+#include "tuya_sdk_av_demo.h"
 #endif
+#include "tuya_sdk_app_reset_demo.h"
+#include "tuya_sdk_dp_demo.h"
+#include "tuya_sdk_floor_map_demo.h"
+#include "tuya_sdk_log_upload_demo.h"
+#include "tuya_sdk_net_sync_demo.h"
+#include "tuya_sdk_rt_map_demo.h"
+#include "tuya_sdk_sd_card_demo.h"
+#include "tuya_sdk_storage_demo.h"
+#include "tuya_sdk_upgrade_demo.h"
+#include "tuya_sdk_voice_demo.h"
 
 
 #define TAG "MAN"
@@ -46,13 +60,32 @@ using namespace mars_message;
 #define DEVICE_UUID         "uuid3658996f48293db1"
 #define PRODUCT_AUTHKEY     "BG15bQZz92o2iPUR7X1LDJYLXOlGpLwe"
 
-#define APP_VERSION         "1.0.0"
 #define APP_STORAGE_PATH    "./tuya/"
 #define APP_DEFAULT_KEY     "./tuya/tuya.key"
 #define APP_UPGRADE_PATH    "../version/"
 #define APP_UPGRADE_FILE    "../version/upgrade.zip"
 #define APP_VERSION_FILE    "../version/soft_version.json"
+
+#define TY_MCU_VERSION     "1.0.0"
+#define TY_APP_VERSION         "1.0.0"
+#define TY_SDK_P2P_NUM_MAX     5           //最大支持 5 个客户端
+#define TY_APP_STORAGE_PATH    "/tmp/"     //虚拟存储路径
+#define TY_SDK_ONLINE_LOG_PATH "/tmp/"     //虚拟存储路径
+
+CHAR_T s_raw_path[128] = { 0 }; //文件路径保存缓存
+
+/*certification information(essential)*/
+std::string id = PRODUCT_ID;
+std::string uuid = DEVICE_UUID;
+std::string authKey = PRODUCT_AUTHKEY;
+
+//app version
+std::string soft_version;
+std::string MCU_version;
+std::string system_version;
+
 /**
+ * 
  * @brief  iot sdk 初始化
  * @param  [in] GW_WF_START_MODE 配网模式
  * @param  [in] p_token 配网 token
@@ -96,16 +129,16 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
     /*以下代码是双固件（主固件+MCU 固件）的情况下使用*/
     GW_ATTACH_ATTR_T arrt;
     arrt.tp = GP_DEV_MCU; // MCU 通道固定为 9
-    strcpy(arrt.ver, TY_MCU_VERSION);
+    strcpy(arrt.ver, MCU_version.c_str()); // MCU 固件版本
     /*以上代码是双固件（主固件+MCU 固件）的情况下使用*/
-    WF_GW_PROD_INFO_S prod_info = { s_ty_uuid, s_ty_authkey, NULL, NULL };
+    WF_GW_PROD_INFO_S prod_info = { (char* )uuid.c_str(), (char* )authKey.c_str(), NULL, NULL };
     TUYA_CALL_ERR_RETURN(tuya_iot_set_wf_gw_prod_info(&prod_info)); //获取 uuid 和 authkey 传给 SDK，注意：开发者在内存中获取 prod_info 参数做好校验，要真实且有效
     //扫地机 wifi 配置选择 GWCM_OLD_PROD；传入的通道为 DEV_NM_ATH_SNGL，不要改变。
-    TUYA_CALL_ERR_RETURN(tuya_iot_wf_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, NULL, s_ty_pid, TY_APP_VERSION, DEV_NM_ATH_SNGL, &arrt, 1));
+    TUYA_CALL_ERR_RETURN(tuya_iot_wf_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, NULL, (char* )id.c_str(), (char *)soft_version.c_str(), DEV_NM_ATH_SNGL, &arrt, 1));
     // TUYA_CALL_ERR_RETURN(tuya_iot_wf_soc_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, s_ty_pid, TY_APP_VERSION));
     //注意：开发者如有双固件的需求，请使用 tuya_iot_wf_dev_init 接口；开发者如只需要单固件的需求，请使用 tuya_iot_wf_soc_dev_init 接口
     TUYA_CALL_ERR_RETURN(tuya_iot_reg_get_wf_nw_stat_cb(ty_sdk_net_status_change_cb)); // wifi 状态回调
-    tuya_wifi_user_cfg("tuya", "tuya", p_token); //测试使用直接填入 p_token，实际开发不需要该接口，SDK 会处理
+    //tuya_wifi_user_cfg("tuya", "tuya", p_token); //测试使用直接填入 p_token，实际开发不需要该接口，SDK 会处理
 
     s_ty_iot_sdk_started = true;
     PR_DEBUG("tuya iot sdk start is complete");
@@ -351,6 +384,16 @@ int main(int argc, char ** argv)
     TuyaComm::Get()->Subscribe("Mget", &TestHandler::OnGet, &testHandler);
     TuyaComm::Get()->Subscribe("Mset", &TestHandler::OnSet, &testHandler);
 
+    TuyaLoadKey(APP_DEFAULT_KEY, id, uuid, authKey);
+    std::ofstream uuid_file("/tmp/uuid.txt");
+    if (uuid_file.is_open()) {
+        uuid_file << uuid;
+        uuid_file.close();
+    } else {
+        LOGD(TAG, "Unable to open file to write UUID");
+    }
+    SoftVersion(APP_VERSION_FILE, soft_version, MCU_version, system_version);
+
     ret = ty_sys_start(WF_START_AP_ONLY, "xd");
     if (ret != OPRT_OK) {
         return ret;
@@ -388,18 +431,6 @@ int main(int argc, char ** argv)
     ret = ty_user_sweeper_rt_map_init(); // 实时地图业务初始化
     if (ret != OPRT_OK) {
         PR_ERR("__user_sweeper_p2p_init failed");
-        return ret;
-    }
-
-    ret = ty_user_sweeper_floor_map_init(); // 楼层地图业务初始化
-    if (ret != OPRT_OK) {
-        PR_ERR("__user_sweeper_floor_map_init failed");
-        return -1;
-    }
-
-    ret = robotics_svc_init_voice(); // voice_init 处理初始化
-    if (OPRT_OK != ret) {
-        PR_ERR("__user_sweeper_voice_init failed\n");
         return ret;
     }
     TuyaComm::Get()->HandleForever();

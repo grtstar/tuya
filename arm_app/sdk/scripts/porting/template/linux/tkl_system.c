@@ -140,3 +140,17 @@ VOID_T tkl_system_delay(UINT_T num_ms)
     // --- END: user implements ---
 }
 
+/**
+* @brief get system cpu info
+*
+* @param[in] cpu_ary: info of cpus
+* @param[in] cpu_cnt: num of cpu
+* @note This API is used for system cpu info get.
+*
+* @return OPRT_OK on success. Others on error, please refer to tuya_error_code.h
+*/
+
+OPERATE_RET tkl_system_get_cpu_info(TUYA_CPU_INFO_T **cpu_ary, INT_T *cpu_cnt)
+{
+    return OPRT_OK;
+}
