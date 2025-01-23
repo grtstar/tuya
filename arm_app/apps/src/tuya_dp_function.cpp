@@ -881,8 +881,12 @@ void DP_HandleCarpetCleanPrefer(TY_OBJ_DP_S *dp)
     tuya_message::Result res = {};
     if (TuyaComm::Get()->Send("ty_carpet_clean_prefer", &req, &res)) // todo
     {
-        TY_OBJ_DP_S d = DPReportEnum(dp->dpid, prefer);
-        dev_report_dp_json_async(NULL, &d, 1);
+        if(res.code == 0)
+        {
+            TY_OBJ_DP_S d = DPReportEnum(dp->dpid, prefer);
+            dev_report_dp_json_async(NULL, &d, 1);
+        }
+        
     }
     else
     {

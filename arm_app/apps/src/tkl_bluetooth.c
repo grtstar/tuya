@@ -401,11 +401,11 @@ bool check_hci0_exists()
 
     ret = system("hciconfig hci0 > /dev/null 2>&1");
     if (ret == 0) {
-        BLE_LOG("hci0 exists.\r\n");
+        //BLE_LOG("hci0 exists.\r\n");
         return true;
     }
 
-    BLE_LOG("hci0 does not exist.\r\n");
+    //BLE_LOG("hci0 does not exist.\r\n");
     return false;
 }
 
