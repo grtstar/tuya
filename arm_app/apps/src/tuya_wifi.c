@@ -1031,3 +1031,8 @@ BOOL_T tuya_adapter_wifi_rf_calibrated(VOID_T)
     LOGF;
     return 1;
 }
+
+int gpio_test_all_cb()
+{
+	return 0;
+}

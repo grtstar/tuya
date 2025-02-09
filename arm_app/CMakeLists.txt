@@ -27,7 +27,7 @@ add_subdirectory(apps/src/bluez/libshared)
 file(GLOB WIFI_SOURCES "apps/src/wifi/wifi/*.c")
 
 add_compile_definitions(OS_NET_LINUX_OS)
-add_compile_definitions(TY_BT_MOD=1)
+#add_compile_definitions(TY_BT_MOD=1)
 #add_compile_definitions(RK_DEVICEIO)
 
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/sdk/lib)

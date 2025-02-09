@@ -33,9 +33,9 @@ VOID IPC_APP_Set_Media_Info(VOID)
     s_media_info.channel_enable[E_CHANNEL_VIDEO_MAIN] = TRUE;    /* Whether to enable local HD video streaming */
     s_media_info.video_fps[E_CHANNEL_VIDEO_MAIN] = 30;  /* FPS */
     s_media_info.video_gop[E_CHANNEL_VIDEO_MAIN] = 30;  /* GOP */
-    s_media_info.video_bitrate[E_CHANNEL_VIDEO_MAIN] = TUYA_VIDEO_BITRATE_1M; /* Rate limit */
-    s_media_info.video_width[E_CHANNEL_VIDEO_MAIN] = 640; /* Single frame resolution of width*/
-    s_media_info.video_height[E_CHANNEL_VIDEO_MAIN] = 360;/* Single frame resolution of height */
+    s_media_info.video_bitrate[E_CHANNEL_VIDEO_MAIN] = TUYA_VIDEO_BITRATE_2M; /* Rate limit */
+    s_media_info.video_width[E_CHANNEL_VIDEO_MAIN] = 1280; /* Single frame resolution of width*/
+    s_media_info.video_height[E_CHANNEL_VIDEO_MAIN] = 720;/* Single frame resolution of height */
     s_media_info.video_freq[E_CHANNEL_VIDEO_MAIN] = 90000; /* Clock frequency */
     s_media_info.video_codec[E_CHANNEL_VIDEO_MAIN] = TUYA_CODEC_VIDEO_H264; /* Encoding format */
 
@@ -44,9 +44,9 @@ VOID IPC_APP_Set_Media_Info(VOID)
     s_media_info.channel_enable[E_CHANNEL_VIDEO_SUB] = TRUE;     /* Whether to enable local SD video stream */
     s_media_info.video_fps[E_CHANNEL_VIDEO_SUB] = 30;  /* FPS */
     s_media_info.video_gop[E_CHANNEL_VIDEO_SUB] = 30;  /* GOP */
-    s_media_info.video_bitrate[E_CHANNEL_VIDEO_SUB] = TUYA_VIDEO_BITRATE_512K; /* Rate limit */
-    s_media_info.video_width[E_CHANNEL_VIDEO_SUB] = 640; /* Single frame resolution of width */
-    s_media_info.video_height[E_CHANNEL_VIDEO_SUB] = 360;/* Single frame resolution of height */
+    s_media_info.video_bitrate[E_CHANNEL_VIDEO_SUB] = TUYA_VIDEO_BITRATE_1M; /* Rate limit */
+    s_media_info.video_width[E_CHANNEL_VIDEO_SUB] = 1280; /* Single frame resolution of width */
+    s_media_info.video_height[E_CHANNEL_VIDEO_SUB] = 720;/* Single frame resolution of height */
     s_media_info.video_freq[E_CHANNEL_VIDEO_SUB] = 90000; /* Clock frequency */
     s_media_info.video_codec[E_CHANNEL_VIDEO_SUB] = TUYA_CODEC_VIDEO_H264; /* Encoding format */
 
@@ -190,7 +190,7 @@ void *thread_live_video(void *arg)
     unsigned int IsKeyFrame=0;
     unsigned char *pVideoBuf = NULL;
 //    sprintf(raw_fullpath, "%s/resource/media/error1.264", s_raw_path);
-sprintf(raw_fullpath, "%s/resource/media/demo7_video.264", s_raw_path);
+    sprintf(raw_fullpath, "/userdata/output.264");
 
     PR_DEBUG("start live video using %s",raw_fullpath);
 
@@ -238,6 +238,7 @@ sprintf(raw_fullpath, "%s/resource/media/demo7_video.264", s_raw_path);
             h264_frame.size = FrameLen;
         }
 
+        //printf("type:%d size:%u\n", h264_frame.type, h264_frame.size);
         int frameRate = 30;
         int sleepTick = 1000000/frameRate;
         static UINT64_T pts = 0;

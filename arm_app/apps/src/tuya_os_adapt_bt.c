@@ -942,9 +942,4 @@ OPERATE_RET tuya_bt_init(VOID)
     return tuya_os_adapt_reg_intf(INTF_BT, &m_tuya_os_bt_intfs);
 }
 
-int gpio_test_all_cb()
-{
-	return 0;
-}
-
 #endif
