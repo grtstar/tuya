@@ -180,7 +180,7 @@ extern "C" {
 // 开启蓝牙功能
 //
 
-// #define TY_BT_MOD 1
+#define TY_BT_MOD 1
 
 #define BT_NETCFG 1
 

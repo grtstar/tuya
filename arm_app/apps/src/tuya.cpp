@@ -237,7 +237,7 @@ int main(int argc, char ** argv)
     TuyaComm::Get()->Subscribe("Mset", &TestHandler::OnSet, &testHandler);
 
 #if defined(TY_BT_MOD) && TY_BT_MOD == 1
-    tuya_bt_init(); xx
+    tuya_bt_init();
 #endif
     tuya_wifi_init();
     
