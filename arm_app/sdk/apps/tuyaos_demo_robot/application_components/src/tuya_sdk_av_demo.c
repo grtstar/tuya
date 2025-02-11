@@ -31,13 +31,24 @@
 #include "tal_video_enc.h"
 #include "tal_video_in.h"
 
-#define APP_SYS_AV_AUDIO_FRAME_SIZE (640) ////音频一帧最大长度640，开发者根据自身的硬件来确定 16000*2/25=1280  8000*2/25=640 ak帧长:512(pcm),256(g711u)
-#define APP_SYS_AV_VIDEO_FRAME_SIZE_100K (100 * 1024) //标清子码流最大100k
+#define APP_SYS_AV_AUDIO_FRAME_SIZE (640) ////音频一帧最大长度 640，开发者根据自身的硬件来确定 16000*2/25=1280  8000*2/25=640 ak 帧长:512(pcm),256(g711u)
+#define APP_SYS_AV_VIDEO_FRAME_SIZE_100K (100 * 1024) //标清子码流最大 100k
 
 RING_BUFFER_USER_HANDLE_T s_ring_buffer_handles[E_IPC_STREAM_MAX] = {
     // ring buff 资源全局变量
     NULL,
 };
+
+void read_frame_from_file(char* file_path, UCHAR_T* frame_buff, int bufSize)
+{
+    FILE* fp = fopen(file_path, "rb");
+    if (fp == NULL) {
+        PR_ERR("open file failed\n");
+        return;
+    }
+    fread(frame_buff, 1, bufSize, fp);
+    fclose(fp);
+}
 
 /**
  * @brief  启动主视频流任务
@@ -47,7 +58,7 @@ RING_BUFFER_USER_HANDLE_T s_ring_buffer_handles[E_IPC_STREAM_MAX] = {
 void* __video_main(void* args)
 {
     UCHAR_T* frame_buff = NULL;
-    int bufSize = MAX_MEDIA_FRAME_SIZE; //主高清视频一帧最大长度300K
+    int bufSize = MAX_MEDIA_FRAME_SIZE; //主高清视频一帧最大长度 300K
     TAL_VENC_FRAME_T frame = { 0 };
 
     frame_buff = (UCHAR_T*)malloc(bufSize);
@@ -58,15 +69,16 @@ void* __video_main(void* args)
     frame.pbuf = (char*)frame_buff;
     frame.buf_size = bufSize;
     while (1) {
-        /*获取到底层的视频流数据，该接口实际映射的是tkl_venc_get_frame,需要开发者去适配(可参考开发者文档)，
-           demo中是强制把固定的数据放到tkl_venc_get_frame中，去实现播放的闭环。*/
+        /*获取到底层的视频流数据，该接口实际映射的是 tkl_venc_get_frame，需要开发者去适配 (可参考开发者文档)，
+           demo 中是强制把固定的数据放到 tkl_venc_get_frame 中，去实现播放的闭环。*/
+        #if 0   
         if (0 == tal_venc_get_frame(0, 0, &frame)) {
 
-            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] == NULL) { //主视频流ring buffer空闲时，打开一个新的会话进行写入操作
+            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] == NULL) { //主视频流 ring buffer 空闲时，打开一个新的会话进行写入操作
                 s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_VIDEO_MAIN, E_RBUF_WRITE);
             }
 
-            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN]) { //新的会话打开之后，将原始视频流数据（来自tkl层）放到ring buffer中
+            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN]) { //新的会话打开之后，将原始视频流数据（来自 tkl 层）放到 ring buffer 中
                 tuya_ipc_ring_buffer_append_data(s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN], frame_buff,
                     frame.used_size, frame.frametype, frame.pts);
 
@@ -76,9 +88,12 @@ void* __video_main(void* args)
         } else {
             usleep(10 * 1000);
         }
+        #else
+        usleep(10 * 1000);
+        #endif
     }
     if (frame_buff != NULL) {
-        free(frame_buff); //异常情况需释放buff,并关闭会话。
+        free(frame_buff); //异常情况需释放 buff，并关闭会话。
     }
     
     if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] != NULL) {
@@ -95,7 +110,7 @@ void* __video_main(void* args)
 void* __video_sub(void* args)
 {
     UCHAR_T* frame_buff = NULL;
-    int bufSize = APP_SYS_AV_VIDEO_FRAME_SIZE_100K; //子标清视频一帧最大长度100K
+    int bufSize = APP_SYS_AV_VIDEO_FRAME_SIZE_100K; //子标清视频一帧最大长度 100K
     TAL_VENC_FRAME_T frame = { 0 };
 
     frame_buff = (UCHAR_T*)malloc(bufSize);
@@ -106,15 +121,15 @@ void* __video_sub(void* args)
     frame.pbuf = (char*)frame_buff;
     frame.buf_size = bufSize;
     while (1) {
-        /*获取到底层的视频流数据，该接口实际映射的是tkl_venc_get_frame,需要开发者去适配(可参考开发者文档)，
-            demo中是强制把固定的数据放到tkl_venc_get_frame中，去实现播放的闭环。*/
+        /*获取到底层的视频流数据，该接口实际映射的是 tkl_venc_get_frame，需要开发者去适配 (可参考开发者文档)，
+            demo 中是强制把固定的数据放到 tkl_venc_get_frame 中，去实现播放的闭环。*/
         if (0 == tal_venc_get_frame(0, 1, &frame)) {
 
-            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] == NULL) { //子视频流ring buffer空闲时，打开一个新的会话进行写入操作
+            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] == NULL) { //子视频流 ring buffer 空闲时，打开一个新的会话进行写入操作
                 s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_VIDEO_SUB, E_RBUF_WRITE);
             }
 
-            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB]) { //新的会话打开之后，将原始视频流数据放到ring buffer中
+            if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB]) { //新的会话打开之后，将原始视频流数据放到 ring buffer 中
                 tuya_ipc_ring_buffer_append_data(s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB], frame_buff,
                     frame.used_size, frame.frametype, frame.pts);
 
@@ -126,7 +141,7 @@ void* __video_sub(void* args)
         }
     }
     if (frame_buff != NULL) {
-        free(frame_buff); //异常情况需释放buff,并关闭会话。
+        free(frame_buff); //异常情况需释放 buff，并关闭会话。
     }
 
     if (s_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] != NULL) { //关闭会话
@@ -143,7 +158,7 @@ void* __video_sub(void* args)
 void* __audio_main(void* args)
 {
     UCHAR_T* frame_buff = NULL;
-    int bufSize = APP_SYS_AV_AUDIO_FRAME_SIZE; //音频一帧最大长度640字节
+    int bufSize = APP_SYS_AV_AUDIO_FRAME_SIZE; //音频一帧最大长度 640 字节
     TAL_AUDIO_FRAME_INFO_T frame = { 0 };
 
     frame_buff = (UCHAR_T*)malloc(bufSize);
@@ -154,14 +169,14 @@ void* __audio_main(void* args)
     frame.pbuf = (char*)frame_buff;
     frame.buf_size = bufSize;
     while (1) {
-        /*获取到底层的音频流数据，该接口实际映射的是tkl_ai_get_frame,需要开发者去适配(可参考开发者文档)，
-           demo中是强制把固定的数据放到tkl_ai_get_frame中，去实现播放的闭环。*/
+        /*获取到底层的音频流数据，该接口实际映射的是 tkl_ai_get_frame，需要开发者去适配 (可参考开发者文档)，
+           demo 中是强制把固定的数据放到 tkl_ai_get_frame 中，去实现播放的闭环。*/
         if (0 == tal_ai_get_frame(0, 0, &frame)) {
-            if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] == NULL) { //音频流ring buffer空闲时，打开一个新的会话进行写入操作
+            if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] == NULL) { //音频流 ring buffer 空闲时，打开一个新的会话进行写入操作
                 s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_AUDIO_MAIN, E_RBUF_WRITE);
             }
 
-            if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN]) { //新的会话打开之后，将原始音频流数据放到ring buffer中
+            if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN]) { //新的会话打开之后，将原始音频流数据放到 ring buffer 中
                 tuya_ipc_ring_buffer_append_data(s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN], frame_buff, frame.used_size,
                     frame.type, frame.pts);
 
@@ -173,7 +188,7 @@ void* __audio_main(void* args)
         }
     }
     if (frame_buff != NULL) {
-        free(frame_buff); //异常情况需释放buff,并关闭会话。
+        free(frame_buff); //异常情况需释放 buff，并关闭会话。
     }
     
     if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] != NULL) { //关闭会话
@@ -189,29 +204,31 @@ void* __audio_main(void* args)
  */
 void tuya_av_start(void)
 {
-#define TY_DSP_MEDIA_AUDIO_MAX 1 //音频采集 支持1路
-#define TY_DSP_MEDIA_VI_MAX 1 //视频输入 支持1路
-#define TY_DSP_MEDIA_VENC_MAX 4 //视频编码，使用4路
+#define TY_DSP_MEDIA_AUDIO_MAX 1 //音频采集 支持 1 路
+#define TY_DSP_MEDIA_VI_MAX 1 //视频输入 支持 1 路
+#define TY_DSP_MEDIA_VENC_MAX 4 //视频编码，使用 4 路
+#if 0
     //开发者可以参考开发者文档，根据自己的硬件资源来初始化以下接口
     PR_DEBUG("create av task!!!\n");
     int ret = 0;
-    ret = tal_vi_init(NULL, TY_DSP_MEDIA_VI_MAX); //底层TKL硬件视频采集初始化接口
+    ret = tal_vi_init(NULL, TY_DSP_MEDIA_VI_MAX); //底层 TKL 硬件视频采集初始化接口
     if (0 != ret) {
         PR_ERR("ty_dsp_init failed,%d\n", ret);
         return;
     }
 
-    ret = tal_venc_init(0, NULL, TY_DSP_MEDIA_VENC_MAX); //底层TKL视频编码初始化接口
+    ret = tal_venc_init(0, NULL, TY_DSP_MEDIA_VENC_MAX); //底层 TKL 视频编码初始化接口
     if (0 != ret) {
         PR_ERR("ty_dsp_init failed,%d\n", ret);
         return;
     }
     TKL_AUDIO_CONFIG_T pconfig = { -1 };
-    ret = tal_ai_init(&pconfig, TY_DSP_MEDIA_AUDIO_MAX); //底层TKL硬件音频采集初始化接口
+    ret = tal_ai_init(&pconfig, TY_DSP_MEDIA_AUDIO_MAX); //底层 TKL 硬件音频采集初始化接口
     if (0 != ret) {
         PR_ERR("tal_ai_init failed,%d\n", ret);
         return;
     }
+#endif
     /*创建线程*/
     pthread_t main_pid = -1;
     pthread_t sub_pid = -1;

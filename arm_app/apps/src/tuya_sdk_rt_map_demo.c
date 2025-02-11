@@ -29,15 +29,15 @@
 #include "uni_time.h"
 
 #define TUYA_SWEEPER_ALBUM_FILE_NUM_MAX 2 //固定上报的最大文件数
-//自定义文件名上报的最大文件数，默认关闭，如需使用到该功能，就打开红定义，目前可支持最大数量为48个自定义文件名
+//自定义文件名上报的最大文件数，默认关闭，如需使用到该功能，就打开红定义，目前可支持最大数量为 48 个自定义文件名
 //#define TUYA_SWEEPER_ALBUM_CUSTOMIZE_FILE_NUM_MAX   2
-#define RT_MAP_TRANS_SLEEP_TIME 2000 /*默认每隔2000mS上报一次路径数据。              
+#define RT_MAP_TRANS_SLEEP_TIME 2000 /*默认每隔 2000mS 上报一次路径数据。              
 这个上报周期，客户可以根据地图大小和网络情况去调整上报频率；                          
-按照涂鸦扫地机协议地图数据格式上到涂鸦智能APP上，以4K数据到面板上解析显示的为列， 
-面板绘图耗时在500ms，加上面板在通道上获取数据的耗时，合理的上报频率在1000ms以上。    
-在弱网下，发送数据容易卡住，最大卡住周期时30S的RTC超时时间。*/
+按照涂鸦扫地机协议地图数据格式上到涂鸦智能 APP 上，以 4K 数据到面板上解析显示的为列， 
+面板绘图耗时在 500ms，加上面板在通道上获取数据的耗时，合理的上报频率在 1000ms 以上。    
+在弱网下，发送数据容易卡住，最大卡住周期时 30S 的 RTC 超时时间。*/
 #define RT_MAP_TRANS_TIMEOUT 3000 // 3s    //实时地图发送接口超时时间
-#define RT_MAP_SEND_TIMEOUT_CNT 10 // 实时地图发送数据超时最大次数，大概20S时间
+#define RT_MAP_SEND_TIMEOUT_CNT 10 // 实时地图发送数据超时最大次数，大概 20S 时间
 
 /**
  * @brief  扫地机实时地图下载的状态
@@ -57,10 +57,10 @@ typedef struct {
 } SWEEPER_FILE_INFO;
 
 /**
- * @brief  扫地机实时地图上传获取SDK内部状态机
+ * @brief  扫地机实时地图上传获取 SDK 内部状态机
  */
 typedef struct _sweeper_ctrl {
-    int session_id; //扫地机实时地图客户端id
+    int session_id; //扫地机实时地图客户端 id
     SWEEPER_DOWNLOAD_STATUS_E album_status; //扫地机实时地图推送状态
     char rt_map_customize_fileName[48]; // 实时地图自定义文件名称
     int send_timeout_cnt; //发送超时累加
@@ -84,12 +84,12 @@ char g_file_path_name[10][256] = { 0 }; //测试文件的路径缓存
 
 /**
  * @brief  获取实时地图上传通道资源
- * @param  [int] session_id 会话id
+ * @param  [int] session_id 会话 id
  * @return [*]
  */
 SWEEPER_CTRL* __get_sweeper_handle(int session_id)
 {
-    if (session_id < 0 || session_id >= TY_SDK_P2P_NUM_MAX) { //通道最大支持5路
+    if (session_id < 0 || session_id >= TY_SDK_P2P_NUM_MAX) { //通道最大支持 5 路
         PR_ERR("session_id %d err\n", session_id);
         return NULL;
     }
@@ -101,7 +101,7 @@ SWEEPER_CTRL* __get_sweeper_handle(int session_id)
  * @param  [IN CONST channel] 连接哪里客户端
  * @param  [IN CONST SWEEPER_TRANSFER_EVENT_E] event 事件
  * @param  [IN CONST args] 回调数据
- * @return [INT]结果
+ * @return [INT] 结果
  */
 INT_T tuya_sweeper_event_cb(INT_T channel, IN CONST SWEEPER_TRANSFER_EVENT_E event, IN CONST PVOID_T args)
 {
@@ -121,8 +121,8 @@ INT_T tuya_sweeper_event_cb(INT_T channel, IN CONST SWEEPER_TRANSFER_EVENT_E eve
         C2C_CMD_IO_CTRL_ALBUM_fileInfo* pFileInfo = pSrcType->pFileInfoArr;
 
         for (int i = 0; i < (TUYA_SWEEPER_ALBUM_FILE_NUM_MAX + TUYA_SWEEPER_ALBUM_CUSTOMIZE_FILE_NUM_MAX); i++) {
-            PR_DEBUG("rt_map_customize_fileName:[%s]\n", pFileInfo->filename); //获取到需要下载的AI原始图片
-            if (0 == strncmp(pFileInfo->filename, "aiHD_", 0x05)) { //对比aiHD_表示高清图片的前缀
+            PR_DEBUG("rt_map_customize_fileName:[%s]\n", pFileInfo->filename); //获取到需要下载的 AI 原始图片
+            if (0 == strncmp(pFileInfo->filename, "aiHD_", 0x05)) { //对比 aiHD_表示高清图片的前缀
                 //获取下载的文件名
                 strncpy(pSweepHandle->rt_map_customize_fileName, pFileInfo->filename, sizeof(pSweepHandle->rt_map_customize_fileName));
             }
@@ -131,12 +131,12 @@ INT_T tuya_sweeper_event_cb(INT_T channel, IN CONST SWEEPER_TRANSFER_EVENT_E eve
 #endif
 
         pSweepHandle->session_id = channel; //通道号赋值
-        if (pSweepHandle->album_status == SWEEPER_DOWNLOAD_STATUS_START) { //本次连接已经存在的session_id,且已经开始下载
+        if (pSweepHandle->album_status == SWEEPER_DOWNLOAD_STATUS_START) { //本次连接已经存在的 session_id，且已经开始下载
             PR_DEBUG("session id already existed");
             break;
         }
         pSweepHandle->album_status = SWEEPER_DOWNLOAD_STATUS_START; //开始下载标志置位
-        pSweepHandle->send_timeout_cnt = 0; //累计数据就清0
+        pSweepHandle->send_timeout_cnt = 0; //累计数据就清 0
         g_sweeper_rt_map_ctrl.used_num++;
         PR_DEBUG("session_id %d", channel);
         ret = tuya_hal_semaphore_post(g_sweeper_rt_map_ctrl.rt_map_deal_sem); //释放信号量
@@ -170,7 +170,7 @@ INT_T tuya_sweeper_event_cb(INT_T channel, IN CONST SWEEPER_TRANSFER_EVENT_E eve
  * @brief  读取文件
  * @param  [int] fileType 文件对应的类型
  * @param  [SWEEPER_FILE_INFO *] pStrFileInfo
- * @return [INT]结果
+ * @return [INT] 结果
  */
 int sweeper_read_file(int fileType, SWEEPER_FILE_INFO* pStrFileInfo)
 {
@@ -216,7 +216,7 @@ int sweeper_read_file(int fileType, SWEEPER_FILE_INFO* pStrFileInfo)
     pStrFileInfo->len = len;
     PR_DEBUG("pStrFileInfo->len %d\n", pStrFileInfo->len);
     return 0;
-    //根据固定的文件类型获取对应的文件内容，只是demo测试用，开发者可以根据自己业务的需求实现
+    //根据固定的文件类型获取对应的文件内容，只是 demo 测试用，开发者可以根据自己业务的需求实现
 }
 
 /**
@@ -230,7 +230,7 @@ void* thread_album_send(void* arg)
     int i = 0;
     PR_DEBUG("THREAD_ALBUM_SEND start...\n");
     while (1) {
-        ret = tuya_hal_semaphore_waittimeout(g_sweeper_rt_map_ctrl.rt_map_deal_sem, RT_MAP_TRANS_SLEEP_TIME); //默认最长等待2s
+        ret = tuya_hal_semaphore_waittimeout(g_sweeper_rt_map_ctrl.rt_map_deal_sem, RT_MAP_TRANS_SLEEP_TIME); //默认最长等待 2s
         if (OPRT_OK == ret) { // 等待信号量成功
             PR_DEBUG("recv sem goto rt map send!\r\n");
         } else {
@@ -246,9 +246,9 @@ void* thread_album_send(void* arg)
             if (SWEEPER_DOWNLOAD_STATUS_NULL == pSweeper->album_status) { //未开始下载，不执行
                 continue;
             }
-            if (SWEEPER_DOWNLOAD_STATUS_STOP == pSweeper->album_status) { // 收到暂停下载之后，给APP上报一个传输结束
+            if (SWEEPER_DOWNLOAD_STATUS_STOP == pSweeper->album_status) { // 收到暂停下载之后，给 APP 上报一个传输结束
                 PR_DEBUG("session_id %d tuya_sweeper_stop_send_data_to_app %d", pSweeper->session_id, g_sweeper_rt_map_ctrl.used_num);
-                /*该接口用户通知 APP 文件传输结束，入参是当前的会话ID*/
+                /*该接口用户通知 APP 文件传输结束，入参是当前的会话 ID*/
                 tuya_sweeper_stop_send_data_to_app(pSweeper->session_id);
                 pSweeper->album_status = SWEEPER_DOWNLOAD_STATUS_NULL; //下载状态初始化
                 if (g_sweeper_rt_map_ctrl.used_num) {
@@ -267,7 +267,7 @@ void* thread_album_send(void* arg)
                     ret = sweeper_read_file(fileType, &strFileInfo); //获取文件数据，准备上报
                     if (0 != ret) {
                         PR_DEBUG("__get_sweeper_file_bufferr %d\n", ret);
-                        if (strFileInfo.buff != NULL) {  //释放申请的buff
+                        if (strFileInfo.buff != NULL) {  //释放申请的 buff
                             free(strFileInfo.buff);
                             strFileInfo.buff = NULL;
                         }
@@ -278,12 +278,12 @@ void* thread_album_send(void* arg)
                     第一个参数是 P2P 通道的会话句柄，在下载地图时，从回调函数中能拿到；
                     第二个参数是地图文件的长度
                     第三个参数是地图文件的内容
-                    第四个参数是P2P发送接口超时时间
+                    第四个参数是 P2P 发送接口超时时间
                     */
-                    /*默认每隔2000mS上报一次路径数据。这个上报周期，客户可以根据地图大小和网络情况去调整上报频率；
-                      按照涂鸦扫地机协议地图数据格式上到涂鸦智能APP上，以4K数据到面板上解析显示的为列，
-                      面板绘图耗时在500ms，加上面板在通道上获取数据的耗时，合理的上报频率在1000ms以上。
-                      在弱网下，发送数据容易卡住，最大超时时间RT_MAP_TRANS_TIMEOUT，可以设置。
+                    /*默认每隔 2000mS 上报一次路径数据。这个上报周期，客户可以根据地图大小和网络情况去调整上报频率；
+                      按照涂鸦扫地机协议地图数据格式上到涂鸦智能 APP 上，以 4K 数据到面板上解析显示的为列，
+                      面板绘图耗时在 500ms，加上面板在通道上获取数据的耗时，合理的上报频率在 1000ms 以上。
+                      在弱网下，发送数据容易卡住，最大超时时间 RT_MAP_TRANS_TIMEOUT，可以设置。
                     */
                     if (0 == fileType) {
                         ret = tuya_sweeper_send_map_data_with_buff(pSweeper->session_id, strFileInfo.len, strFileInfo.buff, RT_MAP_TRANS_TIMEOUT);  //地图上报接口
@@ -291,15 +291,15 @@ void* thread_album_send(void* arg)
                         ret = tuya_sweeper_send_cleanpath_data_with_buff(pSweeper->session_id, strFileInfo.len, strFileInfo.buff, RT_MAP_TRANS_TIMEOUT);//路径上报接口
                     }
                     /*注意：如果您需要增加自定义的文件名上报，
-                           可以放在这里调用tuya_sweeper_send_customize_data_with_buff接口上报，
+                           可以放在这里调用 tuya_sweeper_send_customize_data_with_buff 接口上报，
                            上报频率可参考地图及路径的方法处理。
-                           自定义的文件名需要在SDK初始化完成后调用tuya_sweeper_set_customize_name接口填入，
+                           自定义的文件名需要在 SDK 初始化完成后调用 tuya_sweeper_set_customize_name 接口填入，
                            且文件名称及文件数据格式，需要与面板对齐后。*/
                 #if defined(TUYA_SWEEPER_ALBUM_CUSTOMIZE_FILE_NUM_MAX) && (TUYA_SWEEPER_ALBUM_CUSTOMIZE_FILE_NUM_MAX > 0)
                     else if (2 == fileType) {
                         ret = tuya_sweeper_send_customize_data_with_buff(pSweeper->session_id, "ai.bin.stream", strFileInfo.len, strFileInfo.buff, RT_MAP_TRANS_TIMEOUT);
                     } else if (3 == fileType) {
-                        //判断文件坐标是否有效,填入对应坐标的原图进行上报，如下aiHD_005b_0120.bin名字一致就上报原始图片
+                        //判断文件坐标是否有效，填入对应坐标的原图进行上报，如下 aiHD_005b_0120.bin 名字一致就上报原始图片
                         if (0 == strncmp(pSweeper->rt_map_customize_fileName, "aiHD_005b_0120.bin", sizeof(pSweeper->rt_map_customize_fileName))) {
                             ret = tuya_sweeper_send_customize_data_with_buff(pSweeper->session_id, pSweeper->rt_map_customize_fileName, strFileInfo.len, strFileInfo.buff, RT_MAP_TRANS_TIMEOUT);
                             PR_DEBUG("session_id %d rt_map_customize_fileName[%s] \n", pSweeper->session_id, pSweeper->rt_map_customize_fileName);
@@ -311,7 +311,7 @@ void* thread_album_send(void* arg)
                         ret = OPRT_NOT_FOUND;
                         PR_DEBUG("real-time map nav data don't support! %d", ret);
                     }
-                    if (strFileInfo.buff != NULL) {  //释放申请的buff
+                    if (strFileInfo.buff != NULL) {  //释放申请的 buff
                         free(strFileInfo.buff);
                         strFileInfo.buff = NULL;
                     }
@@ -319,11 +319,11 @@ void* thread_album_send(void* arg)
 
                 if (OPRT_OK == ret) { //发送完成
                     PR_DEBUG("real-time map send out finish session %d", pSweeper->session_id);
-                    pSweeper->send_timeout_cnt = 0; //能发送数据就清0
+                    pSweeper->send_timeout_cnt = 0; //能发送数据就清 0
                 } else {
                     if (ret != OPRT_NOT_FOUND) { //数据发送连续失败
                         pSweeper->send_timeout_cnt++;
-                        if (pSweeper->send_timeout_cnt >= RT_MAP_SEND_TIMEOUT_CNT) {  //连续发送数据失败到RT_MAP_SEND_TIMEOUT_CNT次（开发者可自行定义），就主动关闭P2P链路。
+                        if (pSweeper->send_timeout_cnt >= RT_MAP_SEND_TIMEOUT_CNT) {  //连续发送数据失败到 RT_MAP_SEND_TIMEOUT_CNT 次（开发者可自行定义），就主动关闭 P2P 链路。
                             pSweeper->send_timeout_cnt = 0;
                             tuya_sweeper_p2p_alone_stream_close(pSweeper->session_id); //连接被设备主动关闭
                             PR_NOTICE("close p2p send session %d", pSweeper->session_id);
@@ -389,9 +389,9 @@ OPERATE_RET ty_user_sweeper_rt_map_init(void)
     }
     extern char s_raw_path[];
     PR_DEBUG("THREAD_ALBUM_SEND start...\n");
-    sprintf(g_file_path_name[0], "%s%s", s_raw_path, "/resource/tuya_sweeper_robot/map.bin1"); //测试用，创建临时的文件
-    sprintf(g_file_path_name[1], "%s%s", s_raw_path, "/resource/tuya_sweeper_robot/cleanPath.bin1");
-    sprintf(g_file_path_name[2], "%s%s", s_raw_path, "/resource/tuya_sweeper_robot/ai.bin");
-    sprintf(g_file_path_name[3], "%s%s", s_raw_path, "/resource/tuya_sweeper_robot/aiHD_005b_0120.bin");
+    sprintf(g_file_path_name[0], "%s%s", s_raw_path, "/tmp/map.bin"); //测试用，创建临时的文件
+    sprintf(g_file_path_name[1], "%s%s", s_raw_path, "/tmp/cleanPath.bin");
+    sprintf(g_file_path_name[2], "%s%s", s_raw_path, "/tmp/ai.bin");
+    sprintf(g_file_path_name[3], "%s%s", s_raw_path, "/tmp/aiHD_005b_0120.bin");
     return OPRT_OK;
 }

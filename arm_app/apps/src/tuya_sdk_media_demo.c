@@ -26,6 +26,9 @@
 #include "tuya_ipc_stream_storage.h"
 #include "tuya_ring_buffer.h"
 #include "tuya_sdk_common.h"
+#include "tuya_g711_utils.h"
+#include "rkcamera/rkcamera.h"
+#include "rksound/rksound.h"
 
 typedef struct
 {
@@ -50,7 +53,7 @@ STATIC VOID tuya_app_media_frame_TO_trans_video(IN CONST MEDIA_FRAME_T* p_in, IN
     p_out->p_video_buf = p_in->p_buf; //原始数据
     p_out->buf_len = p_in->size; //原始数据长度
     p_out->pts = p_in->pts; //呈现时间戳，确保视频同步和正确的播放顺序。
-    p_out->timestamp = p_in->timestamp; //时间戳ms
+    p_out->timestamp = p_in->timestamp; //时间戳 ms
 
     return;
 }
@@ -72,7 +75,7 @@ STATIC VOID tuya_app_media_frame_TO_trans_audio(IN CONST MEDIA_FRAME_T* p_in, IN
     p_out->p_audio_buf = p_in->p_buf; //原始数据
     p_out->buf_len = p_in->size; //原始数据长度
     p_out->pts = p_in->pts; //呈现时间戳，确保音频同步和正确的播放顺序。
-    p_out->timestamp = p_in->timestamp; //时间戳ms
+    p_out->timestamp = p_in->timestamp; //时间戳 ms
 
     return;
 }
@@ -86,10 +89,10 @@ STATIC INT_T tuya_app_Enable_Speaker_CB(IN BOOL_T enable)
 {
     if (enable == TRUE) {
         /*按需要来实现，比如播放文件先暂停，让语音对讲优先*/
-        /*开发者在这里会收到APP下发开始语音对讲请求*/
+        /*开发者在这里会收到 APP 下发开始语音对讲请求*/
 
     } else {
-        /*开发者在这里会收到APP下发结束语音对讲请求*/
+        /*开发者在这里会收到 APP 下发结束语音对讲请求*/
     }
     return 0;
 }
@@ -140,6 +143,8 @@ STATIC VOID tuya_app_ss_pb_get_audio_cb(IN UINT_T pb_idx, IN CONST MEDIA_FRAME_T
     return;
 }
 
+extern void * rkcamera;
+
 /**
  * @brief  音视频 event 回调具体处理
  * @param  [IN CONST channel] 连接哪里客户端
@@ -159,37 +164,49 @@ INT_T tuya_sweeper_av_event_cb(IN CONST INT_T channel, IN CONST MEDIA_STREAM_EVE
     case MEDIA_STREAM_LIVE_VIDEO_START: {
         C2C_TRANS_CTRL_VIDEO_START* parm = (C2C_TRANS_CTRL_VIDEO_START*)args;
         PR_DEBUG("chn[%u] video start", parm->channel);
-        /*这里是APP通知设备开始播放视频信息，用户可以在此次做必要的业务逻辑*/
+        /*这里是 APP 通知设备开始播放视频信息，用户可以在此次做必要的业务逻辑*/
+        printf("=============OPEN %d CAMERA==============\n", parm->channel);
+        rkcamera = rkcamera_open();
+        rksound_record_open();
         break;
     }
     case MEDIA_STREAM_LIVE_VIDEO_STOP: {
         C2C_TRANS_CTRL_VIDEO_STOP* parm = (C2C_TRANS_CTRL_VIDEO_STOP*)args;
         PR_DEBUG("chn[%u] video stop", parm->channel);
-        /*这里是APP通知设备停止播放视频信息，用户可以在此次做必要的业务逻辑*/
+        /*这里是 APP 通知设备停止播放视频信息，用户可以在此次做必要的业务逻辑*/
+        rkcamera_close(rkcamera);
+        rksound_record_close();
+        printf("=============CLOSE %d CAMERA==============\n", parm->channel);
         break;
     }
     case MEDIA_STREAM_LIVE_AUDIO_START: {
         C2C_TRANS_CTRL_AUDIO_START* parm = (C2C_TRANS_CTRL_AUDIO_START*)args;
         PR_DEBUG("chn[%u] audio start", parm->channel);
-        /*这里是APP通知设备开始播放语音信息，用户可以在此次做必要的业务逻辑*/
+        /*这里是 APP 通知设备开始播放语音信息，用户可以在此次做必要的业务逻辑*/
+        printf("=============OPEN %d AUDIO==============\n", parm->channel);
+
+        rksound_play_open();
         break;
     }
     case MEDIA_STREAM_LIVE_AUDIO_STOP: {
         C2C_TRANS_CTRL_AUDIO_STOP* parm = (C2C_TRANS_CTRL_AUDIO_STOP*)args;
         PR_DEBUG("chn[%u] audio stop", parm->channel);
-        /*这里是APP通知设备停止播放语音信息，用户可以在此次做必要的业务逻辑*/
+        /*这里是 APP 通知设备停止播放语音信息，用户可以在此次做必要的业务逻辑*/
+        printf("=============CLOSE %d AUDIO==============\n", parm->channel);
+
+        rksound_play_close();
         break;
     }
     case MEDIA_STREAM_SPEAKER_START: {
         PR_DEBUG("enbale audio speaker");
         tuya_app_Enable_Speaker_CB(TRUE);
-        /*这里是APP通知设备开始语音对讲*/
+        /*这里是 APP 通知设备开始语音对讲*/
         break;
     }
     case MEDIA_STREAM_SPEAKER_STOP: {
         PR_DEBUG("disable audio speaker");
         tuya_app_Enable_Speaker_CB(FALSE);
-        /*这里是APP通知设备停止语音对讲*/
+        /*这里是 APP 通知设备停止语音对讲*/
         break;
     }
     case MEDIA_STREAM_ABILITY_QUERY: { //查询音频视频流的能力
@@ -245,7 +262,7 @@ INT_T tuya_sweeper_av_event_cb(IN CONST INT_T channel, IN CONST MEDIA_STREAM_EVE
         break;
     }
     /*开始执行回放，即从指定时间找到音视频帧数据，依次把之后的音视频数据按照要求的格式填入结构体并调用接口发送，
-    参考 tuya_app_ss_pb_get_video_cb, tuya_app_ss_pb_get_audio_cb的实现，即获取到的音视频帧数据通过以上两个接口发送。****/
+    参考 tuya_app_ss_pb_get_video_cb, tuya_app_ss_pb_get_audio_cb 的实现，即获取到的音视频帧数据通过以上两个接口发送。****/
     case MEDIA_STREAM_PLAYBACK_START_TS: { //开始回放视频
         /* 客户端在播放时会带上开始时间。这里只进行日志打印。 */
         C2C_TRANS_CTRL_PB_START* pParam = (C2C_TRANS_CTRL_PB_START*)args;
@@ -377,10 +394,23 @@ VOID tuya_sweeper_app_rev_audio_cb(IN INT_T device, IN INT_T channel, IN CONST M
 
     PR_DEBUG("Rev Audio. size:[%u] audio_codec:[%d] audio_sample:[%d] audio_databits:[%d] audio_channel:[%d]\n", audio_frame.size,
         p_audio_frame->audio_codec, p_audio_frame->audio_sample, p_audio_frame->audio_databits, p_audio_frame->audio_channel);
-    /*这里是收到APP的语音信息，在设备端播放出来*/
+    /*这里是收到 APP 的语音信息，在设备端播放出来*/
+    if(TUYA_CODEC_AUDIO_G711U == p_audio_frame->audio_codec) {
+        uint8_t *p_buf = (uint8_t *)malloc(audio_frame.size * 3);
+        if(p_buf)
+        {
+            uint32_t out_len = audio_frame.size * 3;
+            tuya_g711_decode(TUYA_G711_MU_LAW, audio_frame.p_buf, audio_frame.size / 2, p_buf, &out_len);
+            rksound_play_pcm(p_buf, out_len);
+            free(p_buf);
+        }
+    }
+    if(TUYA_CODEC_AUDIO_PCM == p_audio_frame->audio_codec) {
+        rksound_play_pcm(audio_frame.p_buf, audio_frame.size);
+    }
     return;
 }
-/** @brief 接收视频参数回调(双向可视)
+/** @brief 接收视频参数回调 (双向可视)
  * @param[in]  device  device number
  * @param[in]  channel channel number
  * @param[in]  p_video_frame  video frame info
@@ -392,7 +422,7 @@ VOID tuya_sweeper_app_rev_video_cb(IN INT_T device, IN INT_T channel, IN CONST M
 
     return;
 }
-/** @brief APP下载文件回调(云相框功能)
+/** @brief APP 下载文件回调 (云相框功能)
  * @param[in]  device  device number
  * @param[in]  channel channel number
  * @param[in]  p_file_data  file data info
@@ -402,7 +432,7 @@ VOID tuya_sweeper_app_rev_file_cb(IN INT_T device, IN INT_T channel, IN CONST ME
 {
     return;
 }
-/** @brief APP获取一帧数据回调
+/** @brief APP 获取一帧数据回调
  * @param[in] device  device number
  * @param[in] channel  channel number
  * @param[in] snap_addr  snap buffer

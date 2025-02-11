@@ -305,7 +305,7 @@ TY_OBJ_DP_S DP_ReportSeek(int dpId, bool b)
 void DP_HandleSeek(TY_OBJ_DP_S *dp)
 {
     bool b = dp->value.dp_bool;
-    PlayVoice(V_SEEK_ROBOT, 3);
+    PlayVoice(V_SEEK_ROBOT, 1);
 
     TY_OBJ_DP_S d = DP_ReportSeek(dp->dpid, 0);
     dev_report_dp_json_async(NULL, &d, 1);
@@ -2972,15 +2972,28 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
                 int err = 0;
                 if(ext == "gz")
                 {
-                    err += system(("tar -zxf " + file_name + " -C /data/voice/" + std::to_string(langId)).c_str());
+                    system(("mkdir -p /data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("tar -zxf " + file_name + " --strip-components=1 -C /data/voice/" + std::to_string(langId)).c_str());
                     err += system(("rm " + file_name).c_str());
-                    err += system(("mv /data/voice/" + std::to_string(langId) + "/*/* " + "/data/voice/" + std::to_string(langId)).c_str());
+                    //err += system(("mv /data/voice/" + std::to_string(langId) + "/*/* " + "/data/voice/" + std::to_string(langId)).c_str());
                     // 写入版本信息
                     err += system(("echo " + std::to_string(fileVersion) + " > " + "/data/voice/" + std::to_string(langId) + "/ver.txt").c_str());
                     err += system("rm -rf /data/voice/now");
                     err += system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
                     err += system(("echo " + std::to_string(langId) + " > " + "/data/voice/" + "/now.txt").c_str());
                     //TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x02, 0);
+                }
+                else if(ext == "tar")
+                {
+                    system(("mkdir -p /data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("tar -xf " + file_name + " --strip-components=1 -C /data/voice/" + std::to_string(langId)).c_str());
+                    err += system(("rm " + file_name).c_str());
+                    //err += system(("mv /data/voice/" + std::to_string(langId) + "/*/* " + "/data/voice/" + std::to_string(langId)).c_str());
+                    // 写入版本信息
+                    err += system(("echo " + std::to_string(fileVersion) + " > " + "/data/voice/" + std::to_string(langId) + "/ver.txt").c_str());
+                    err += system("rm -rf /data/voice/now");
+                    err += system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
+                    err += system(("echo " + std::to_string(langId) + " > " + "/data/voice/" + "/now.txt").c_str());
                 }
                 else if(ext == "zip")
                 {

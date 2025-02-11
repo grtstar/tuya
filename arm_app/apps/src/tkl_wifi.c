@@ -30,7 +30,7 @@
 #include "wifi/wmg_sta.h"
 // --- END: user defines and implements ---
 
-#define WLAN_DEV    "ens33"
+#define WLAN_DEV    "wlan0"
 
 
 #ifdef RK_DEVICEIO
@@ -356,7 +356,7 @@ OPERATE_RET tkl_wifi_start_ap(CONST WF_AP_CFG_IF_S *cfg)
         return OPRT_INVALID_PARM;
     }
 
-    printf("Start AP SSID:%s \r\n", cfg->ssid);
+    printf("Start AP SSID:%s, ip: %s\r\n", cfg->ssid, cfg->ip.ip);
      char ssid[128] = {0};
     strncpy(ssid, cfg->ssid, sizeof(ssid));
     char passwd[128] = {0};
@@ -366,6 +366,7 @@ OPERATE_RET tkl_wifi_start_ap(CONST WF_AP_CFG_IF_S *cfg)
     ap_config.psk = passwd;
     ap_config.channel = cfg->chan;
     ap_config.sec = cfg->md;
+    //ap_config.ip = cfg->ip.ip;
     int r = wifi_ap_enable(&ap_config);
     if(WMG_STATUS_SUCCESS != r)
     {
@@ -373,7 +374,6 @@ OPERATE_RET tkl_wifi_start_ap(CONST WF_AP_CFG_IF_S *cfg)
         return OPRT_COM_ERROR;
     }
     printf("Start AP Success\n");
-    return OPRT_OK;
     return OPRT_OK;
 }
 
@@ -522,9 +522,10 @@ OPERATE_RET tkl_wifi_get_ip(CONST WF_IF_E wf, NW_IP_S *ip)
     }
 
     if(wf == WF_AP){/* Simple Processing in AP Mode */
-        memcpy(ip->ip, "192.168.0.1", strlen("192.168.0.1"));
-        memcpy(ip->gw, "192.168.0.1", strlen("192.168.0.1"));
-        memcpy(ip->mask, "255.255.255.0", strlen("255.255.255.0"));
+        hwl_get_local_ip_info(WLAN_DEV,ip);
+        // memcpy(ip->ip, "192.168.176.1", strlen("192.168.176.1"));
+        // memcpy(ip->gw, "192.168.176.1", strlen("192.168.176.1"));
+        // memcpy(ip->mask, "255.255.255.0", strlen("255.255.255.0"));
     }
 
     if(wf == WF_STATION){
@@ -585,10 +586,10 @@ OPERATE_RET tkl_wifi_get_mac(CONST WF_IF_E wf, NW_MAC_S *mac)
     char tmp[256];
     memset(tmp, 0, sizeof(tmp));
     while (fgets(tmp, sizeof(tmp), pp) != NULL){
-        char *pMACStart = strstr(tmp, "ether ");
+        char *pMACStart = strstr(tmp, "HWaddr ");
         if(pMACStart != NULL){
             int x1,x2,x3,x4,x5,x6;
-            sscanf(pMACStart + strlen("ether "), "%x:%x:%x:%x:%x:%x",&x1,&x2,&x3,&x4,&x5,&x6);
+            sscanf(pMACStart + strlen("HWaddr "), "%x:%x:%x:%x:%x:%x",&x1,&x2,&x3,&x4,&x5,&x6);
             mac->mac[0] = x1 & 0xFF;
             mac->mac[1] = x2 & 0xFF;
             mac->mac[2] = x3 & 0xFF;
@@ -957,16 +958,26 @@ OPERATE_RET tkl_wifi_station_get_status(WF_STATION_STAT_E *stat)
 
     printf("======> tuya_adapter_wifi_station_get_status %d\n", *stat);
 #else
-    if (hwl_get_local_ip_info("wlan0", &ip) == OPRT_OK)
-    {
-
-        *stat = WSS_GOT_IP; // Be sure to return in real time
-    }
-    else
+    WF_WK_MD_E mode;
+    tkl_wifi_get_work_mode(&mode);
+    if(mode == WWM_SOFTAP)
     {
         *stat = WSS_IDLE;
     }
+    else
+    {
+        if (hwl_get_local_ip_info("wlan0", &ip) == OPRT_OK && strlen(ip.ip) > 0)
+        {
+            *stat = WSS_GOT_IP; // Be sure to return in real time
+        }
+        else
+        {
+            *stat = WSS_IDLE;
+        }
+    }
+   
 #endif
+    printf("Current WiFi Station Status: %d\n", *stat);
     return OPRT_OK;
 }
 

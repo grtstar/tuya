@@ -61,12 +61,15 @@ include_directories(nl/include/libnl3)
 
 add_subdirectory(apps/src/bluez/libbluetooth)
 add_subdirectory(apps/src/bluez/libshared)
+add_subdirectory(apps/src/rkcamera)
+add_subdirectory(apps/src/rksound)
 
 file(GLOB WIFI_SOURCES "apps/src/wifi/wifi/*.c")
 file(GLOB TUYA_UTILS_SOURCES "sdk/tuyaos/tuyaos_adapter/include/utilities/src/*.c")
 file(GLOB TUYA_INIT_SOURCES "sdk/tuyaos/tuyaos_adapter/include/init/src/*.c")
 file(GLOB TUYA_PORTING_LINUX_SOURCES "sdk/scripts/porting/template/linux/*.c")
 file(GLOB TUYA_BLE_SOURCE "sdk/tuyaos/tuyaos_adapter/src/Bluez_ble/*.c")
+file(GLOB RKCAMERA_SOURCE "apps/src/rkcamera/*.cpp")
 
 add_compile_definitions(OS_NET_LINUX_OS)
 add_compile_definitions(TY_BT_MOD=1)
@@ -137,3 +140,13 @@ target_link_libraries(${PROJECT_NAME} ssl)
 target_link_libraries(${PROJECT_NAME} rtmp)
 # crypto
 target_link_libraries(${PROJECT_NAME} crypto)
+# rkisp_api
+target_link_libraries(${PROJECT_NAME} rkisp_api)
+# rockchip_mpp
+target_link_libraries(${PROJECT_NAME} rockchip_mpp)
+# rkcamera
+target_link_libraries(${PROJECT_NAME} rkcamera)
+# rksound
+target_link_libraries(${PROJECT_NAME} rksound)
+# alsa
+target_link_libraries(${PROJECT_NAME} asound)

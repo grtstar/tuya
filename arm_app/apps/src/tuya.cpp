@@ -54,7 +54,7 @@ using namespace mars_message;
 #include "tuya_sdk_voice_demo.h"
 
 
-#define TAG "MAN"
+#define TAG "TUY"
 
 #define PRODUCT_ID          "cnyiygalqpueeiwf"
 #define DEVICE_UUID         "uuid3658996f48293db1"
@@ -67,7 +67,6 @@ using namespace mars_message;
 #define APP_VERSION_FILE    "../version/soft_version.json"
 
 #define TY_MCU_VERSION     "1.0.0"
-#define TY_APP_VERSION         "1.0.0"
 #define TY_SDK_P2P_NUM_MAX     5           //最大支持 5 个客户端
 #define TY_APP_STORAGE_PATH    "/tmp/"     //虚拟存储路径
 #define TY_SDK_ONLINE_LOG_PATH "/tmp/"     //虚拟存储路径
@@ -81,7 +80,7 @@ std::string authKey = PRODUCT_AUTHKEY;
 
 //app version
 std::string soft_version;
-std::string MCU_version;
+std::string MCU_version = "1.0.0";
 std::string system_version;
 
 /**
@@ -100,8 +99,8 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
         PR_DEBUG("iot sdk has started");
         return rt;
     }
-    PR_DEBUG("SDK Version:%s", tuya_iot_get_sdk_info()); //获取 sdk 版本
-    PR_DEBUG("system reset reason:[%d]", tal_system_get_reset_reason(NULL)); //测试 demo 中实现不了系统重启原因的打印，开发者自己去实现系统重启原因
+    LOGD(TAG, "SDK Version:{}", tuya_iot_get_sdk_info()); //获取 sdk 版本
+    LOGD(TAG, "system reset reason:[{}]", tal_system_get_reset_reason(NULL)); //测试 demo 中实现不了系统重启原因的打印，开发者自己去实现系统重启原因
 
     tuya_robot_event_init(); //机器人相关事件初始化
     /*以下准备文件系统读写存储路径，真实的设备需要填写设备本地路径*/
@@ -109,7 +108,7 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
     init_param.init_db = TRUE;
     strcpy(init_param.sys_env, TARGET_PLATFORM);
     strcpy(init_param.log_seq_path, "/tmp/tuya"); // SDK 在线日志保存的路径
-    TUYA_CALL_ERR_LOG(tuya_iot_init_params("tuya", &init_param)); // SDK db 文件存储路径
+    TUYA_CALL_ERR_LOG(tuya_iot_init_params(APP_STORAGE_PATH, &init_param)); // SDK db 文件存储路径
     /*以上准备文件系统读写存储路径，真实的设备需要填写设备本地路径*/
 #if defined(TY_BT_MOD) && TY_BT_MOD == 1
     tuya_set_bt_device_name("RVC");   //如果需要修改蓝牙广播名称，可以在这里做，注意支持的名称最大长度是 5 字节
@@ -132,16 +131,19 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
     strcpy(arrt.ver, MCU_version.c_str()); // MCU 固件版本
     /*以上代码是双固件（主固件+MCU 固件）的情况下使用*/
     WF_GW_PROD_INFO_S prod_info = { (char* )uuid.c_str(), (char* )authKey.c_str(), NULL, NULL };
+    LOGD(TAG, "uuid:{}, authKey:{}", prod_info.uuid, prod_info.auth_key);
     TUYA_CALL_ERR_RETURN(tuya_iot_set_wf_gw_prod_info(&prod_info)); //获取 uuid 和 authkey 传给 SDK，注意：开发者在内存中获取 prod_info 参数做好校验，要真实且有效
     //扫地机 wifi 配置选择 GWCM_OLD_PROD；传入的通道为 DEV_NM_ATH_SNGL，不要改变。
+    LOGD(TAG, "id:{}, soft_version:{}", id.c_str(), soft_version.c_str());
     TUYA_CALL_ERR_RETURN(tuya_iot_wf_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, NULL, (char* )id.c_str(), (char *)soft_version.c_str(), DEV_NM_ATH_SNGL, &arrt, 1));
     // TUYA_CALL_ERR_RETURN(tuya_iot_wf_soc_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, s_ty_pid, TY_APP_VERSION));
     //注意：开发者如有双固件的需求，请使用 tuya_iot_wf_dev_init 接口；开发者如只需要单固件的需求，请使用 tuya_iot_wf_soc_dev_init 接口
+    LOGL(TAG);
     TUYA_CALL_ERR_RETURN(tuya_iot_reg_get_wf_nw_stat_cb(ty_sdk_net_status_change_cb)); // wifi 状态回调
     //tuya_wifi_user_cfg("tuya", "tuya", p_token); //测试使用直接填入 p_token，实际开发不需要该接口，SDK 会处理
-
+    LOGL(TAG);
     s_ty_iot_sdk_started = true;
-    PR_DEBUG("tuya iot sdk start is complete");
+    LOGD(TAG, "tuya iot sdk start is complete");
     return rt;
 }
 
@@ -166,8 +168,8 @@ static OPERATE_RET ty_robot_media_sdk_init(void)
     p_media_infos.av_encode_info.video_fps[E_IPC_STREAM_VIDEO_MAIN] = 30; /* FPS */ //一秒钟内连续播放的 30 帧
     p_media_infos.av_encode_info.video_gop[E_IPC_STREAM_VIDEO_MAIN] = 30; /* GOP */ //关键帧，该值的大小影响视频解密的效率及质量
     p_media_infos.av_encode_info.video_bitrate[E_IPC_STREAM_VIDEO_MAIN] = TUYA_VIDEO_BITRATE_1M; /* 传输速率 */
-    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_MAIN] = 640; /* 单帧分辨率的宽度*/
-    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_MAIN] = 360; /* 单帧分辨率的高度 */
+    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_MAIN] = 1280; /* 单帧分辨率的宽度*/
+    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_MAIN] = 720; /* 单帧分辨率的高度 */
     p_media_infos.av_encode_info.video_freq[E_IPC_STREAM_VIDEO_MAIN] = 90000; /* 摄像头的时钟频率 */
     p_media_infos.av_encode_info.video_codec[E_IPC_STREAM_VIDEO_MAIN] = TUYA_CODEC_VIDEO_H264; /* 编码方式 */
 
@@ -178,8 +180,8 @@ static OPERATE_RET ty_robot_media_sdk_init(void)
     p_media_infos.av_encode_info.video_fps[E_IPC_STREAM_VIDEO_SUB] = 30; /* FPS */ //一秒钟内连续播放的 30 帧
     p_media_infos.av_encode_info.video_gop[E_IPC_STREAM_VIDEO_SUB] = 30; /* GOP */ //关键帧，该值的大小影响视频解密的效率及质量
     p_media_infos.av_encode_info.video_bitrate[E_IPC_STREAM_VIDEO_SUB] = TUYA_VIDEO_BITRATE_512K; /* 传输速率 */
-    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_SUB] = 640; /* 单帧分辨率的宽度 */
-    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_SUB] = 360; /* 单帧分辨率的高度 */
+    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_SUB] = 1280; /* 单帧分辨率的宽度 */
+    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_SUB] = 720; /* 单帧分辨率的高度 */
     p_media_infos.av_encode_info.video_freq[E_IPC_STREAM_VIDEO_SUB] = 90000; /* 摄像头的时钟频率 */
     p_media_infos.av_encode_info.video_codec[E_IPC_STREAM_VIDEO_SUB] = TUYA_CODEC_VIDEO_H264; /* 编码方式 */
 
@@ -343,7 +345,7 @@ public:
 OPERATE_RET ty_sys_start(GW_WF_START_MODE connect_mode, CHAR_T* p_token)
 {
     OPERATE_RET ret = OPRT_OK;
-    PR_DEBUG("sys start ");
+    LOGD(TAG, "sys start ");
 
     ret = ty_iot_sdk_init(connect_mode, p_token); // IOT SDK 初始化
     if (OPRT_OK != ret) {
@@ -371,7 +373,7 @@ OPERATE_RET ty_sys_start(GW_WF_START_MODE connect_mode, CHAR_T* p_token)
 
 int main(int argc, char ** argv)
 {
-    LOGVERSION("v1.0.14");
+    LOGVERSION("v1.0.15");
     //StackTrace stackTrack;
     INT_T ret = -1;
     lcm::LCM lcm;
@@ -394,7 +396,7 @@ int main(int argc, char ** argv)
     }
     SoftVersion(APP_VERSION_FILE, soft_version, MCU_version, system_version);
 
-    ret = ty_sys_start(WF_START_AP_ONLY, "xd");
+    ret = ty_sys_start(WF_START_AP_ONLY, "");
     if (ret != OPRT_OK) {
         return ret;
     }

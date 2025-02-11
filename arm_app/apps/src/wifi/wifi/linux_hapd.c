@@ -945,8 +945,16 @@ static int linux_ap_hapd_enable(wifi_ap_config_t *ap_config)
 		LOGE("failed to enable ap hapd\n");
 		return WMG_STATUS_FAIL;
 	}
-
-	system("ifconfig wlan0 192.168.5.10");
+	if(ap_config->ip != NULL)
+	{
+		char cmd[128] = {0};
+		snprintf(cmd, 128, "ifconfig wlan0 %s", ap_config->ip);
+		system(cmd);
+	}
+	else
+	{
+		system("ifconfig wlan0 192.168.5.10");
+	}
 	//system("mkdir -p /var/lib/misc/");
 	system("killall udhcpc");
 	system("killall dhcpcd");

@@ -307,6 +307,7 @@ typedef enum {
 typedef struct {
 	char *ssid;
 	char *psk;
+	char *ip;
 	wifi_secure_t sec;
 	uint8_t channel;
 	char *dev_list[STA_MAX_NUM];

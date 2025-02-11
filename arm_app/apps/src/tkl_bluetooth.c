@@ -10,6 +10,7 @@
  */
 
 // --- BEGIN: user defines and implements ---
+#include <stdio.h>
 #include "tkl_bluetooth.h"
 #include "tuya_cloud_types.h"
 #include "tuya_error_code.h"
@@ -401,11 +402,11 @@ bool check_hci0_exists()
 
     ret = system("hciconfig hci0 > /dev/null 2>&1");
     if (ret == 0) {
-        //BLE_LOG("hci0 exists.\r\n");
+        printf("hci0 exists.\r\n");
         return true;
     }
 
-    //BLE_LOG("hci0 does not exist.\r\n");
+    printf("hci0 does not exist.\r\n");
     return false;
 }
 
@@ -424,7 +425,7 @@ bool check_hci0_runnning()
 
         if (fgets(buffer, sizeof(buffer), fp) != NULL) {
             pclose(fp);
-            BLE_LOG("hci0 is already up and running.\r\n");
+            //BLE_LOG("hci0 is already up and running.\r\n");
             return true;
         }
 
@@ -465,7 +466,7 @@ bool bt_start()
 OPERATE_RET tkl_ble_stack_init(UCHAR_T role)
 {
     // --- BEGIN: user implements ---
-    bt_start();
+    // bt_start();
     return OPRT_NOT_SUPPORTED;
     // --- END: user implements ---
 }
