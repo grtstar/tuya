@@ -15,11 +15,7 @@ extern "C" {
 #include "tuya_cloud_com_defs.h"
 #include "tuya_robot_sdk_init.h"
 
-#define TY_APP_STORAGE_PATH    "/tmp/"     //虚拟存储路径
-#define TY_SDK_ONLINE_LOG_PATH "/tmp/"     //虚拟存储路径
-#define TY_APP_VERSION         "1.0.1"     //主机上报的版本
-#define TY_MCU_VERSION         "1.0.0"     //mcu 上报的版本
-#define TY_SDK_P2P_NUM_MAX     5           //最大支持5个客户端
+#define TY_SDK_P2P_NUM_MAX     5           //最大支持 5 个客户端
 #define TY_ROBOT_MEDIA_ENABLE  1           //打开音视频开关
 
 

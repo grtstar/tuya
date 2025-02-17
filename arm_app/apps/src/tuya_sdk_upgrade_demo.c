@@ -19,8 +19,8 @@
 #include "utilities/uni_log.h"
 
 /**
- * @brief OTA升级进度同步
- * @param[UINT_T] percent: 升级进度百分比，有效值[0,100]
+ * @brief OTA 升级进度同步
+ * @param[UINT_T] percent: 升级进度百分比，有效值 [0,100]
  * @return OPRT_OK on success. Others on error, please refer to tuya_error_code.h
  */
 OPERATE_RET tuya_robot_upgrade_progress_report(IN UINT_T percent)
@@ -33,7 +33,7 @@ OPERATE_RET tuya_robot_upgrade_progress_report(IN UINT_T percent)
     STATIC UINT_T prePercent = 0;
     STATIC UINT_T prePosix = 0;
     UINT_T curPosix = uni_time_get_posix(); //获取系统时间戳
-    //这里是根据OTA升级，SDK内部分包大小来推算的进度值，无特殊要求，开发者无需再做修改，可直接使用。
+    //这里是根据 OTA 升级，SDK 内部分包大小来推算的进度值，无特殊要求，开发者无需再做修改，可直接使用。
     if ((curPosix - prePosix >= 2) || (percent - prePercent >= 8) || ((percent >= 95) && (percent > prePercent))) {
         prePercent = percent;
         prePosix = curPosix;
@@ -48,7 +48,7 @@ OPERATE_RET tuya_robot_upgrade_progress_report(IN UINT_T percent)
 }
 
 /**
- * @brief  OTA进度通知回调
+ * @brief  OTA 进度通知回调
  * @param  [FW_UG_S] *fw
  * @param  [int] download_result 下载结果
  * @param  [void*] pri_data
@@ -62,8 +62,9 @@ OPERATE_RET __ty_user_upgrade_notify_cb(IN CONST FW_UG_S* fw, IN CONST INT_T dow
     switch (download_result) {
     case OPRT_OK:
         PR_DEBUG("Upgrade Finish");
-        // 开发者需要在OTA文件成功下载到指定路径后，本地实现OTA升级文件更新的操作
+        // 开发者需要在 OTA 文件成功下载到指定路径后，本地实现 OTA 升级文件更新的操作
         //其它比较耗时的业务逻辑不要在这边处理，可以通过事件的形式发送出去，到别的任务上出来。
+        system("./upgrade.sh > ../upgrade.log"); //执行升级脚本
         break;
     default:
         // 收到升级失败指令，清空升级状态
@@ -71,13 +72,13 @@ OPERATE_RET __ty_user_upgrade_notify_cb(IN CONST FW_UG_S* fw, IN CONST INT_T dow
         //升级失败，开发者可以将下载到本地文件删除等动作
         break;
     }
-    //注意：不管升级成功还是升级失败，最终都需要reboot system重启
+    //注意：不管升级成功还是升级失败，最终都需要 reboot system 重启
 
     return OPRT_OK;
 }
 
 /**
- * @brief  OTA升级数据回调
+ * @brief  OTA 升级数据回调
  * @param [FW_UG_S] *fw
  * @param total_len 总长度
  * @param offset 下载进度
@@ -99,19 +100,19 @@ OPERATE_RET __ty_user_get_file_data_cb(IN CONST FW_UG_S* fw, IN CONST UINT_T tot
     }
     PR_DEBUG("total_len:%d  fw_url:%s", total_len, fw->fw_url);
     PR_DEBUG("Offset:%d Len:%d", offset, len);
-    // 开始写入OTA文件到指定的flash中
+    // 开始写入 OTA 文件到指定的 flash 中
     /* only for example:
     FILE *p_upgrade_fd = (FILE *)pri_data;
     fwrite(data, 1, len, p_upgrade_fd);
     *remain_len = 0;
     */
     // 报告升级过程，不仅仅是下载百分比，还要考虑写入内存的时间。
-    // 如果升级过程在60秒（该时间可以在IOT后台设置，默认为60秒）内没有更新，应用程序将报告超时失败。
+    // 如果升级过程在 60 秒（该时间可以在 IOT 后台设置，默认为 60 秒）内没有更新，应用程序将报告超时失败。
     int percent = offset * 100 / total_len;
     if (percent != report_percent) {
         report_percent = percent;
         PR_DEBUG("report percent[%u]\n", report_percent);
-        if (report_percent < 100) { //设备一般不上报100，比如OTA文件下载完成，本地更新固件失败，这个时候上报100，会导致APP无法检测升级失败而长时间停留在升级界面。
+        if (report_percent < 100) { //设备一般不上报 100，比如 OTA 文件下载完成，本地更新固件失败，这个时候上报 100，会导致 APP 无法检测升级失败而长时间停留在升级界面。
             tuya_robot_upgrade_progress_report(report_percent);
         }
     }
@@ -119,7 +120,7 @@ OPERATE_RET __ty_user_get_file_data_cb(IN CONST FW_UG_S* fw, IN CONST UINT_T tot
 }
 
 /**
- * @brief  OTA前检查设备状态是否符合升级的回调
+ * @brief  OTA 前检查设备状态是否符合升级的回调
  * @param  [TY_SDK_FW_UG_T] *fw
  * @return [INT_T] TI_UPGRD_STAT_S
  */

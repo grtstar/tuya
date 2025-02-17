@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "tal_video_enc.h"
 #include "tuya_album_sweeper_api.h"
@@ -145,6 +146,90 @@ STATIC VOID tuya_app_ss_pb_get_audio_cb(IN UINT_T pb_idx, IN CONST MEDIA_FRAME_T
 
 extern void * rkcamera;
 
+
+#define APP_SYS_AV_AUDIO_FRAME_SIZE (640) ////音频一帧最大长度 640，开发者根据自身的硬件来确定 16000*2/25=1280  8000*2/25=640 ak 帧长:512(pcm),256(g711u)
+#define APP_SYS_AV_VIDEO_FRAME_SIZE_100K (100 * 1024) //标清子码流最大 100k
+
+RING_BUFFER_USER_HANDLE_T audio_ring_buffer_handles[E_IPC_STREAM_MAX] = {
+    // ring buff 资源全局变量
+    NULL,
+};
+
+
+/**
+ * @brief  音频录制回调
+ * @param  [IN CONST void*] 输入缓冲区
+ * @param  [INOUT void*] 输出缓冲区
+ * @param  [IN unsigned long] 每帧的大小
+ * @param  [IN CONST PaStreamCallbackTimeInfo*] 时间信息
+ * @param  [IN PaStreamCallbackFlags] 状态标志
+ * @param  [IN void*] 用户数据
+ * @return [*]
+ */
+STATIC int record_callback(IN CONST void* inputBuffer, INOUT void* outputBuffer, IN unsigned long framesPerBuffer,
+    IN CONST PaStreamCallbackTimeInfo* timeInfo, IN PaStreamCallbackFlags statusFlags, IN void* userData)
+{   
+    if (audio_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] == NULL) { //主视频流 ring buffer 空闲时，打开一个新的会话进行写入操作
+        audio_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_AUDIO_MAIN, E_RBUF_WRITE);
+    }
+    if (audio_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN]) { //新的会话打开之后，将原始音频流数据放到 ring buffer 中
+        
+        // 取第四个通道的数据
+        uint16_t * channel_data = (uint16_t*)malloc(framesPerBuffer * sizeof(uint16_t));
+        if (channel_data == NULL) {
+            PR_ERR("内存分配失败\n");
+            return 1;
+        }
+        const int channel_index = 3;
+        for(int i=0; i<framesPerBuffer; i++)
+        {
+            channel_data[i] = ((uint16_t*)inputBuffer)[i * 4 + channel_index];
+        }
+        long long pts = timeInfo->inputBufferAdcTime;
+        tuya_ipc_ring_buffer_append_data(audio_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN], 
+            (char*)channel_data, framesPerBuffer * 2, E_AUDIO_FRAME, pts);
+        free(channel_data);
+    }
+    return 0;
+}
+
+void video_main_cb(void* ptr, size_t len, bool is_key_frame)
+{
+
+    if (audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] == NULL) { //子视频流 ring buffer 空闲时，打开一个新的会话进行写入操作
+        audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_VIDEO_MAIN, E_RBUF_WRITE);
+    }
+
+    if (audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN]) { //新的会话打开之后，将原始视频流数据放到 ring buffer 中
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        long long timestamp = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+        int ret = tuya_ipc_ring_buffer_append_data(audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_MAIN], ptr,
+            len, is_key_frame ? TKL_VIDEO_I_FRAME : TKL_VIDEO_PB_FRAME, timestamp);
+
+    } else {
+        PR_ERR("tuya_ipc_ring_buffer_open failed, channel:%d\n", E_IPC_STREAM_VIDEO_MAIN);
+    }
+}
+
+void video_sub_cb(void* ptr, size_t len, bool is_key_frame)
+{
+    if (audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] == NULL) { //子视频流 ring buffer 空闲时，打开一个新的会话进行写入操作
+        audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_VIDEO_SUB, E_RBUF_WRITE);
+    }
+
+    if (audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB]) { //新的会话打开之后，将原始视频流数据放到 ring buffer 中
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        long long timestamp = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+        tuya_ipc_ring_buffer_append_data(audio_ring_buffer_handles[E_IPC_STREAM_VIDEO_SUB], ptr,
+            len, is_key_frame, timestamp);
+
+    } else {
+        PR_ERR("tuya_ipc_ring_buffer_open failed,channle:%d\n", E_IPC_STREAM_VIDEO_SUB);
+    }
+}
+
 /**
  * @brief  音视频 event 回调具体处理
  * @param  [IN CONST channel] 连接哪里客户端
@@ -165,35 +250,37 @@ INT_T tuya_sweeper_av_event_cb(IN CONST INT_T channel, IN CONST MEDIA_STREAM_EVE
         C2C_TRANS_CTRL_VIDEO_START* parm = (C2C_TRANS_CTRL_VIDEO_START*)args;
         PR_DEBUG("chn[%u] video start", parm->channel);
         /*这里是 APP 通知设备开始播放视频信息，用户可以在此次做必要的业务逻辑*/
-        printf("=============OPEN %d CAMERA==============\n", parm->channel);
+        PR_DEBUG("============= 打开摄像头 %d ==============\n", parm->channel);
         rkcamera = rkcamera_open();
-        rksound_record_open();
+        rkcamera_start(rkcamera, video_main_cb, video_sub_cb);
+        PR_DEBUG("============= 打开 MIC ==============\n", parm->channel);
+        rksound_record_open(8000, 320, 4, record_callback, NULL);
         break;
     }
     case MEDIA_STREAM_LIVE_VIDEO_STOP: {
         C2C_TRANS_CTRL_VIDEO_STOP* parm = (C2C_TRANS_CTRL_VIDEO_STOP*)args;
         PR_DEBUG("chn[%u] video stop", parm->channel);
         /*这里是 APP 通知设备停止播放视频信息，用户可以在此次做必要的业务逻辑*/
+        PR_DEBUG("============= 关闭摄像头 %d ==============\n", parm->channel);
+        rkcamera_stop(rkcamera);
         rkcamera_close(rkcamera);
+        PR_DEBUG("============= 关闭 MIC ==============\n", parm->channel);
         rksound_record_close();
-        printf("=============CLOSE %d CAMERA==============\n", parm->channel);
         break;
     }
     case MEDIA_STREAM_LIVE_AUDIO_START: {
         C2C_TRANS_CTRL_AUDIO_START* parm = (C2C_TRANS_CTRL_AUDIO_START*)args;
         PR_DEBUG("chn[%u] audio start", parm->channel);
         /*这里是 APP 通知设备开始播放语音信息，用户可以在此次做必要的业务逻辑*/
-        printf("=============OPEN %d AUDIO==============\n", parm->channel);
-
-        rksound_play_open();
+        PR_DEBUG("============= 打开音频 %d ==============\n", parm->channel);
+        rksound_play_open(8000, 32, 2, NULL, NULL);
         break;
     }
     case MEDIA_STREAM_LIVE_AUDIO_STOP: {
         C2C_TRANS_CTRL_AUDIO_STOP* parm = (C2C_TRANS_CTRL_AUDIO_STOP*)args;
         PR_DEBUG("chn[%u] audio stop", parm->channel);
         /*这里是 APP 通知设备停止播放语音信息，用户可以在此次做必要的业务逻辑*/
-        printf("=============CLOSE %d AUDIO==============\n", parm->channel);
-
+        PR_DEBUG("============= 关闭音频 %d ==============\n", parm->channel);
         rksound_play_close();
         break;
     }
@@ -400,10 +487,22 @@ VOID tuya_sweeper_app_rev_audio_cb(IN INT_T device, IN INT_T channel, IN CONST M
         if(p_buf)
         {
             uint32_t out_len = audio_frame.size * 3;
-            tuya_g711_decode(TUYA_G711_MU_LAW, audio_frame.p_buf, audio_frame.size / 2, p_buf, &out_len);
-            rksound_play_pcm(p_buf, out_len);
-            free(p_buf);
+            tuya_g711_decode(TUYA_G711_MU_LAW, (uint16_t *)audio_frame.p_buf, audio_frame.size, p_buf, &out_len);
+            // 单声道数据转为双声道
+            uint8_t* stereo = (uint8_t*)malloc(out_len * 2);
+            if(stereo) {
+
+                for (int i = 0, j = 0; i < out_len; i += 2, j += 4) {
+                    stereo[j]     = p_buf[i];
+                    stereo[j + 1] = p_buf[i + 1];
+                    stereo[j + 2] = p_buf[i];
+                    stereo[j + 3] = p_buf[i + 1];
+                }
+                rksound_play_pcm(stereo, out_len / 2);
+                free(stereo);
+            }
         }
+        free(p_buf);
     }
     if(TUYA_CODEC_AUDIO_PCM == p_audio_frame->audio_codec) {
         rksound_play_pcm(audio_frame.p_buf, audio_frame.size);

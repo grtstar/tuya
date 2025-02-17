@@ -5,15 +5,30 @@
 #include "rkisp_api.h"
 #include "encoder.h"
 #include "rkcamera.h"
+#include <thread>
 
+
+/*
+
+camera --> mpp1 --> main
+       --> rga --> mpp2 --> sub
+
+*/
 typedef struct rkcamera {
     bool got_sps;
     bool frame_encoded;
     bool is_open;
+    bool is_start;
     rkencoder encoder;
+    rkencoder encoder_sub;
     const struct rkisp_api_buf* frame;
     const struct rkisp_api_ctx* ctx;
     std::mutex mutex; 
+
+    void (*callback_main)(void*, size_t, bool);
+    void (*callback_sub)(void*, size_t, bool);
+
+    std::thread thread;
 } rkcamera;
 
 void* rkcamera_open(void)
@@ -22,7 +37,7 @@ void* rkcamera_open(void)
     std::lock_guard<std::mutex> lock(camera.mutex);
     const char* dev_path = "/dev/video0";
     camera.ctx = rkisp_open_device(dev_path, 0);
-    if (rkisp_set_fmt(camera.ctx, 1280, 720, V4L2_PIX_FMT_NV12) != 0) {
+    if (rkisp_set_fmt(camera.ctx, 1280, 720, V4L2_PIX_FMT_NV21) != 0) {
         std::cerr << "Failed to set format" << std::endl;
         rkisp_close_device(camera.ctx);
         return NULL;
@@ -41,11 +56,68 @@ void* rkcamera_open(void)
         rkisp_close_device(camera.ctx);
         return NULL;
     }
-    rkencode_init(&camera.encoder);
+    rkencode_init(&camera.encoder, true);
+    rkencode_init(&camera.encoder_sub, false);
     camera.got_sps = false;
     camera.frame_encoded = true;
     camera.is_open = true;
     return &camera;
+}
+
+
+void rkcamera_run(void* dev)
+{
+    rkcamera* camera = (rkcamera*)dev;
+    while(camera->is_start)
+    {
+        const struct rkisp_api_buf* frame = rkisp_get_frame(camera->ctx, 1000);
+        if (frame) {
+            // Process the frame here.
+            MppBuffer mpp_buf;
+            MppBufferInfo info;
+            memset(&info, 0, sizeof(MppBufferInfo));
+            info.type = MPP_BUFFER_TYPE_EXT_DMA;
+            info.fd =  frame->fd;
+            info.size = frame->size & 0x07ffffff;
+            info.index = (frame->size & 0xf8000000) >> 27;
+            mpp_buffer_import(&mpp_buf, &info);
+
+            rkencode_frame(&camera->encoder, mpp_buf, [&camera](void* ptr, size_t len, bool is_key_frame){
+                if(camera->callback_main){
+                    camera->callback_main(ptr, len, is_key_frame);
+                }
+            }, !camera->got_sps);
+
+            rkencode_frame(&camera->encoder_sub, mpp_buf, [&camera](void* ptr, size_t len, bool is_key_frame){
+                if(camera->callback_sub){
+                    camera->callback_sub(ptr, len, is_key_frame);
+                }
+            }, !camera->got_sps);
+
+            camera->got_sps = true;
+            rkisp_put_frame(camera->ctx, frame);
+        } else {
+            std::cerr << "Failed to capture frame or timeout" << std::endl;
+        }
+    }
+}
+
+
+void rkcamera_start(void* dev, void (*cb_main)(void*, size_t, bool), void (*cb_sub)(void*, size_t, bool))
+{
+    rkcamera* camera = (rkcamera*)dev;
+    camera->callback_main = cb_main;
+    camera->callback_sub = cb_sub;
+    camera->is_start = true; 
+
+    camera->thread = std::thread(rkcamera_run, camera);
+}
+
+void rkcamera_stop(void* dev)
+{
+    rkcamera* camera = (rkcamera*)dev;
+    camera->is_start = false;
+    camera->thread.join();
 }
 
 int rkcamera_get_frame(void* dev, void* frame_buf, int wait_ms, bool *is_key_frame)
@@ -197,84 +269,3 @@ int read_h264_frame(FILE *fp, unsigned char *buf, int bufSize, int *frameLen, in
     
     return 0;
 }
-
-#if 0
-volatile std::sig_atomic_t stop = 0;
-void signalHandler(int)
-{
-    stop = 1;
-}
-int main() {
-    std::signal(SIGINT, signalHandler);
-    rkencoder encoder;
-    rkencode_init(&encoder);
-
-    FILE *fp = fopen("output.h264", "wb");
-
-    // Open device. Change device path if necessary.
-    const char* dev_path = "/dev/video0";
-    const struct rkisp_api_ctx* ctx = rkisp_open_device(dev_path, 0);
-    if (!ctx) {
-        std::cerr << "Failed to open device at " << dev_path << std::endl;
-        return -1;
-    }
-
-    // Set camera format to 1920x1080 with NV12 format.
-    if (rkisp_set_fmt(ctx, 1280, 720, V4L2_PIX_FMT_NV12) != 0) {
-        std::cerr << "Failed to set format" << std::endl;
-        rkisp_close_device(ctx);
-        return -1;
-    }
-
-    // Request buffers. Using 4 buffers as an example.
-    if (rkisp_set_buf(ctx, 4, nullptr, 0) != 0) {
-        std::cerr << "Failed to set buffers" << std::endl;
-        rkisp_close_device(ctx);
-        return -1;
-    }
-
-    // Start the capture stream.
-    if (rkisp_start_capture(ctx) != 0) {
-        std::cerr << "Failed to start capture" << std::endl;
-        rkisp_close_device(ctx);
-        return -1;
-    }
-
-    std::cout << "Capturing frames... Press Ctrl+C to exit." << std::endl;
-    bool first_frame = true;
-    while (!stop) {
-        // Wait for a frame with a timeout of 1000ms.
-        const struct rkisp_api_buf* frame = rkisp_get_frame(ctx, 1000);
-        if (frame) {
-            std::cout << "Captured frame, sequence: " << frame->sequence << std::endl;
-            // Process the frame here.
-            MppBuffer mpp_buf;
-            MppBufferInfo info;
-            memset(&info, 0, sizeof(MppBufferInfo));
-            info.type = MPP_BUFFER_TYPE_EXT_DMA;
-            info.fd =  frame->fd;
-            info.size = frame->size & 0x07ffffff;
-            info.index = (frame->size & 0xf8000000) >> 27;
-            mpp_buffer_import(&mpp_buf, &info);
-
-            rkencode_frame(&encoder, mpp_buf, [fp](void* ptr, size_t len){
-                fwrite(ptr, 1, len, fp);
-                printf("Encoded frame size: %zu\n", len);
-            }, first_frame);
-            if(first_frame){
-                first_frame = false;
-            }
-            rkisp_put_frame(ctx, frame);
-        } else {
-            std::cerr << "Failed to capture frame or timeout" << std::endl;
-        }
-    }
-
-    rkisp_stop_capture(ctx);
-    rkisp_close_device(ctx);
-    rkencode_deinit(&encoder);
-    fclose(fp);
-    std::cout << "Capture stopped. Exiting." << std::endl;
-    return 0;
-}
-#endif

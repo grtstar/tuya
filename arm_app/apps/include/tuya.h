@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 void PlayVoice(int v, int mode);
-
+void DevicePairingSuccess(void);
 #ifdef __cplusplus
 }
 #endif

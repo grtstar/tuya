@@ -79,6 +79,7 @@ link_directories(${CMAKE_CURRENT_SOURCE_DIR}/sdk/libs)
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/nl/lib)
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/lib/lib64/bluez)
+link_directories($ENV{COMMON_DIR}/lib)
 
 add_executable(${PROJECT_NAME}  apps/src/tuya.cpp
                                 apps/src/tuya_robot.cpp
@@ -148,5 +149,7 @@ target_link_libraries(${PROJECT_NAME} rockchip_mpp)
 target_link_libraries(${PROJECT_NAME} rkcamera)
 # rksound
 target_link_libraries(${PROJECT_NAME} rksound)
+# portaudio
+target_link_libraries(${PROJECT_NAME} libportaudio.a)
 # alsa
 target_link_libraries(${PROJECT_NAME} asound)

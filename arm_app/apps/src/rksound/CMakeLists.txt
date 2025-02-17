@@ -5,4 +5,5 @@ set(CMAKE_CXX_STANDARD 11)
 
 
 include_directories(.)
+include_directories($ENV{COMMON_DIR}/include)
 add_library(rksound ./rksound.cpp)	

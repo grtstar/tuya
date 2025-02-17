@@ -14,6 +14,7 @@
 #include "tuya_iot_wifi_api.h"
 #include "tuya_sdk_dp_demo.h"
 #include "tuya_sdk_app_reset_demo.h"
+#include "tuya_svc_upgrade.h"
 
 #define __NLOHMANN_JSON_CPP
 #include "robot_msg.h"
@@ -273,12 +274,12 @@ TY_OBJ_DP_S DPReport(int dpId, int32_t value)
     return DPReportValue(dpId, value);
 }
 
+tuya_message::RobotState sweeper = {0};
+
 void TuyaReportStatus(tuya_message::RobotState status)
 {
     nlohmann::json j = status;
     LOGD(TAG, "ReportStatus: {}", j.dump(2));
-
-    static tuya_message::RobotState sweeper = {0};
     std::vector<TY_OBJ_DP_S> dps;
     // 1 清扫开关
     dps.emplace_back(DPReport(1, status.switch_go));
@@ -375,8 +376,10 @@ void TuyaReportStatus(tuya_message::RobotState status)
     // 166 上传日志
     dps.emplace_back(DPReport(166, status.log_upload));
 
-
-    dev_report_dp_json_async(NULL, &dps[0], dps.size());
+    for(int i=0; i<dps.size(); i++)
+    {
+        dev_report_dp_json_async(NULL, &dps[i], 1);
+    }
 
     static int64_t lastDeviceInfoTime = 0;
 
@@ -390,15 +393,17 @@ void TuyaReportStatus(tuya_message::RobotState status)
     extern std::string system_version;
     if (TimeTick::Ms() - lastDeviceInfoTime > 10 * 1000)
     {
+        LOGD(TAG, "上传设备信息");
         lastDeviceInfoTime = TimeTick::Ms();
 
         char ssid[128] = {0};
         tkl_wifi_get_ssid(ssid);
         std::string wifiName = ssid;
 
-        int rssi = 0;
         SCHAR_T rssiT;
         tkl_wifi_station_get_conn_ap_rssi(&rssiT);
+        int rssi = rssiT;
+        LOGD(TAG, "wifiName:{} rssi:{}", wifiName, rssi);
 
         NW_IP_S ips = {0};
         tkl_wifi_get_ip(WF_STATION, &ips);
@@ -416,7 +421,7 @@ void TuyaReportStatus(tuya_message::RobotState status)
         std::string baseStationSN = "BASE";
         std::string baseStationVersion = "1.0.0";
         std::string baseStationLocalVersion = "1.0.0";
-        DP_ReportDeviceInfo(34, wifiName, rssi, ip, mac, mcuVersion, firmwareVersion, deviceSN, moduleUUID, baseStationSN, baseStationVersion, baseStationLocalVersion);
+        DP_ReportDeviceInfo(34, wifiName, rssiT, ip, mac, mcuVersion, firmwareVersion, deviceSN, moduleUUID, baseStationSN, baseStationVersion, baseStationLocalVersion);
     }
 }
 
@@ -424,9 +429,14 @@ void TuyaComm::ReportStatus()
 {
     tuya_message::Request req = {0};
     tuya_message::RobotState state = {0};
-    if(Send("ty_state", &req, &state))
+    LOGD(TAG, "获取设备状态");
+    if(Send("ty_state", &req, &state, 1000))
     {
         TuyaReportStatus(state);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到设备状态");
     }
 }
 
@@ -922,26 +932,48 @@ VOID ty_sdk_app_reset_cb(GW_RESET_TYPE_E type)
     case GW_LOCAL_RESET_FACTORY: //本地恢复出厂设置
         //清除必要的业务数据，注意不必删除 db 文件
         //注意需要重启设备
+        LOGD(TAG, "本地恢复出厂设置");
         break;
     case GW_REMOTE_RESET_FACTORY: // APP 下发移除设备并清除数据
         //清除必要的业务数据，注意不必删除 db 文件
         //注意需要重启设备
+        LOGD(TAG, "远程恢复出厂设置");
+        system("./reset_factory.sh &");
         break;
     case GW_LOCAL_UNACTIVE: //本地重置
+    {
         //取消清扫任务控制
         //开发者自行业务上做逻辑，如灯效，声音等
         //注意需要重启设备
+        LOGD(TAG, "本地重置");
+        mars_message::Event evt = {0};
+        if(!TuyaComm::Get()->Send("ty_unactive", &evt, 200))
+        {
+            system("./reset_wifi.sh &");
+        }
         break;
+    }
     case GW_REMOTE_UNACTIVE: // APP 重置
+    {
         //取消清扫任务控制
         //开发者自行业务上做逻辑，如灯效，声音等
         //注意需要重启设备
+        LOGD(TAG, "APP 重置");
+
+        mars_message::Event evt = {0};
+        if(!TuyaComm::Get()->Send("ty_unactive", &evt, 200))
+        {
+            system("./reset_wifi.sh &");
+        }
         break;
+    }
     case GW_RESET_DATA_FACTORY: // 激活时数据重置
         /**
          * App 执行 `解绑并清除数据` 重置时，或者重新配网的 App 账户与原 App 账户不是同一个家庭账号，则
          * 激活时会收到该类型。提醒开发者清除下本地数据，如果您在重新配网前未做过数据清除。
          */
+        LOGD(TAG, "激活时数据重置");
+        system("./reset_data.sh &");
         break;
 
     default:
@@ -1005,4 +1037,27 @@ void dp_handle_sd_status_response(ROBOT_SD_STATUS_E sd_status)
         return;
     }
     //respone_dp_value(TUYA_DP_SD_STATUS_ONLY_GET, sd_status);
+}
+
+/**
+ * @brief  OTA 前检查设备状态是否符合升级的回调
+ * @param  [TY_SDK_FW_UG_T] *fw
+ * @return [INT_T] TI_UPGRD_STAT_S
+ */
+INT_T ty_dev_upgrade_pre_check_cb(IN CONST FW_UG_S* fw)
+{
+#define BATTERY_CHECK_THREAD 30 //升级电量限制 30%
+    static unsigned char tus_download_error_cnt = 0;
+    /*开发者可以在此处判断是否符合升级条件，如电量、机器状态等*/
+    char battery_percentage = sweeper.battery;
+    if (battery_percentage < BATTERY_CHECK_THREAD) { //电量不足
+        tus_download_error_cnt++; //这里只是测试用，将错误码循环上报一次，开发者根据自身的条件来上报对应的错误码
+        if (tus_download_error_cnt >= 10) {
+            tus_download_error_cnt = 0;
+        }
+        return TUS_DOWNLOAD_ERROR_UNKONW + tus_download_error_cnt;
+    }
+    PR_DEBUG("Upgrade check OK");
+    /*其他升级条件由开发者自己添加*/
+    return TUS_RD;
 }

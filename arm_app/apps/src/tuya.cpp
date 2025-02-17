@@ -52,7 +52,7 @@ using namespace mars_message;
 #include "tuya_sdk_storage_demo.h"
 #include "tuya_sdk_upgrade_demo.h"
 #include "tuya_sdk_voice_demo.h"
-
+#include "tuya.h"
 
 #define TAG "TUY"
 
@@ -66,9 +66,8 @@ using namespace mars_message;
 #define APP_UPGRADE_FILE    "../version/upgrade.zip"
 #define APP_VERSION_FILE    "../version/soft_version.json"
 
-#define TY_MCU_VERSION     "1.0.0"
 #define TY_SDK_P2P_NUM_MAX     5           //最大支持 5 个客户端
-#define TY_APP_STORAGE_PATH    "/tmp/"     //虚拟存储路径
+#define TY_APP_STORAGE_PATH    "/data/"     //虚拟存储路径
 #define TY_SDK_ONLINE_LOG_PATH "/tmp/"     //虚拟存储路径
 
 CHAR_T s_raw_path[128] = { 0 }; //文件路径保存缓存
@@ -82,6 +81,8 @@ std::string authKey = PRODUCT_AUTHKEY;
 std::string soft_version;
 std::string MCU_version = "1.0.0";
 std::string system_version;
+
+bool tuya_is_online = false;
 
 /**
  * 
@@ -126,9 +127,27 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
     iot_cbs.dev_dp_query_cb = ty_cmd_handle_dp_query_objs; //注册查询 dp 接口
 
     /*以下代码是双固件（主固件+MCU 固件）的情况下使用*/
+    {
+        std::ifstream mcuFile("mcu_version.txt");
+        if (mcuFile.is_open()) {
+            std::getline(mcuFile, MCU_version);
+            mcuFile.close();
+            LOGD(TAG, "MCU_version read from file: {}", MCU_version);
+        } else {
+            LOGD(TAG, "Failed to open /data/xd/mcu_version.txt");
+        }
+    }
+    std::string mcu_version = MCU_version;
+    {
+        // Remove the final parenthesis and its contents from MCU_version
+        size_t pos = mcu_version.find_last_of('(');
+        if (pos != std::string::npos) {
+            mcu_version = mcu_version.substr(0, pos);
+        }
+    }
     GW_ATTACH_ATTR_T arrt;
     arrt.tp = GP_DEV_MCU; // MCU 通道固定为 9
-    strcpy(arrt.ver, MCU_version.c_str()); // MCU 固件版本
+    strcpy(arrt.ver, mcu_version.c_str()); // MCU 固件版本
     /*以上代码是双固件（主固件+MCU 固件）的情况下使用*/
     WF_GW_PROD_INFO_S prod_info = { (char* )uuid.c_str(), (char* )authKey.c_str(), NULL, NULL };
     LOGD(TAG, "uuid:{}, authKey:{}", prod_info.uuid, prod_info.auth_key);
@@ -138,12 +157,10 @@ static OPERATE_RET ty_iot_sdk_init(GW_WF_START_MODE connect_mode, CHAR_T* p_toke
     TUYA_CALL_ERR_RETURN(tuya_iot_wf_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, NULL, (char* )id.c_str(), (char *)soft_version.c_str(), DEV_NM_ATH_SNGL, &arrt, 1));
     // TUYA_CALL_ERR_RETURN(tuya_iot_wf_soc_dev_init(GWCM_OLD_PROD, connect_mode, &iot_cbs, s_ty_pid, TY_APP_VERSION));
     //注意：开发者如有双固件的需求，请使用 tuya_iot_wf_dev_init 接口；开发者如只需要单固件的需求，请使用 tuya_iot_wf_soc_dev_init 接口
-    LOGL(TAG);
     TUYA_CALL_ERR_RETURN(tuya_iot_reg_get_wf_nw_stat_cb(ty_sdk_net_status_change_cb)); // wifi 状态回调
     //tuya_wifi_user_cfg("tuya", "tuya", p_token); //测试使用直接填入 p_token，实际开发不需要该接口，SDK 会处理
-    LOGL(TAG);
     s_ty_iot_sdk_started = true;
-    LOGD(TAG, "tuya iot sdk start is complete");
+    LOGD(TAG, "tuya ty_iot_sdk_init");
     return rt;
 }
 
@@ -180,8 +197,8 @@ static OPERATE_RET ty_robot_media_sdk_init(void)
     p_media_infos.av_encode_info.video_fps[E_IPC_STREAM_VIDEO_SUB] = 30; /* FPS */ //一秒钟内连续播放的 30 帧
     p_media_infos.av_encode_info.video_gop[E_IPC_STREAM_VIDEO_SUB] = 30; /* GOP */ //关键帧，该值的大小影响视频解密的效率及质量
     p_media_infos.av_encode_info.video_bitrate[E_IPC_STREAM_VIDEO_SUB] = TUYA_VIDEO_BITRATE_512K; /* 传输速率 */
-    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_SUB] = 1280; /* 单帧分辨率的宽度 */
-    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_SUB] = 720; /* 单帧分辨率的高度 */
+    p_media_infos.av_encode_info.video_width[E_IPC_STREAM_VIDEO_SUB] = 640; /* 单帧分辨率的宽度 */
+    p_media_infos.av_encode_info.video_height[E_IPC_STREAM_VIDEO_SUB] = 360; /* 单帧分辨率的高度 */
     p_media_infos.av_encode_info.video_freq[E_IPC_STREAM_VIDEO_SUB] = 90000; /* 摄像头的时钟频率 */
     p_media_infos.av_encode_info.video_codec[E_IPC_STREAM_VIDEO_SUB] = TUYA_CODEC_VIDEO_H264; /* 编码方式 */
 
@@ -400,42 +417,56 @@ int main(int argc, char ** argv)
     if (ret != OPRT_OK) {
         return ret;
     }
-    ret = tuya_sdk_mqtt_online_sys_loop(); //设备首次上线处理
-    if (ret != OPRT_OK) {
-        return ret;
-    }
-#if defined(TY_ROBOT_MEDIA_ENABLE) && (TY_ROBOT_MEDIA_ENABLE == 1)
-    ret = ty_media_local_storage(); //本地存储
-    if (ret != OPRT_OK) {
-        PR_ERR("tuya media local storage failed");
-        return ret;
-    }
-    //开启音频存储，视频录制时长 2 秒以上
-    ret = ty_media_cloud_storage(TRUE, 2); //云端存储
-    if (ret != OPRT_OK) {
-        PR_ERR("tuya media cloud storage failed");
-        return ret;
-    }
+    bool onLineInit = false;
+    while (true)
+    {
+        if(tuya_is_online)
+        {
+            if(!onLineInit)
+            {
+                onLineInit = true;
+                ret = ty_user_sweeper_rt_map_init(); // 实时地图业务初始化
+                if (ret != OPRT_OK) {
+                    PR_ERR("__user_sweeper_p2p_init failed");
+                    return ret;
+                }
+            #if defined(TY_ROBOT_MEDIA_ENABLE) && (TY_ROBOT_MEDIA_ENABLE == 1)
+                ret = ty_media_local_storage(); //本地存储
+                if (ret != OPRT_OK) {
+                    PR_ERR("tuya media local storage failed");
+                    return ret;
+                }
+                LOGL(TAG);
 
-    ret = tuya_enable_storage_deal(); //音视频存储任务
-    if (ret != OPRT_OK) {
-        return ret;
+                //开启音频存储，视频录制时长 2 秒以上
+                ret = ty_media_cloud_storage(TRUE, 2); //云端存储
+                if (ret != OPRT_OK) {
+                    PR_ERR("tuya media cloud storage failed");
+                    return ret;
+                }
+                LOGL(TAG);
+
+                ret = tuya_enable_storage_deal(); //音视频存储任务
+                if (ret != OPRT_OK) {
+                    return ret;
+                }
+            #endif
+                ret = tuya_media_server_customize_init(TY_SDK_P2P_NUM_MAX); // 初始化媒体流服务
+                if (ret != OPRT_OK) {
+                    PR_ERR("tuya media server init failed");
+                    return ret;
+                }
+                LOGL(TAG);
+
+            #if defined(TY_ROBOT_MEDIA_ENABLE) && (TY_ROBOT_MEDIA_ENABLE == 1)
+                tuya_av_start(); //开始塞音视频流数据
+            #endif
+                LOGL(TAG);
+            }
+        }
+        
+        TuyaComm::Get()->HandleTimeout(1);
     }
-#endif
-    ret = tuya_media_server_customize_init(TY_SDK_P2P_NUM_MAX); // 初始化媒体流服务
-    if (ret != OPRT_OK) {
-        PR_ERR("tuya media server init failed");
-        return ret;
-    }
-#if defined(TY_ROBOT_MEDIA_ENABLE) && (TY_ROBOT_MEDIA_ENABLE == 1)
-    tuya_av_start(); //开始塞音视频流数据
-#endif
-    ret = ty_user_sweeper_rt_map_init(); // 实时地图业务初始化
-    if (ret != OPRT_OK) {
-        PR_ERR("__user_sweeper_p2p_init failed");
-        return ret;
-    }
-    TuyaComm::Get()->HandleForever();
    
     return 0;
 }
@@ -448,4 +479,13 @@ void PlayVoice(int v, int param)
     voice.event = v;
     voice.param = param;
     TuyaComm::Get()->Publish("Voice", &voice);
+}
+
+void DevicePairingSuccess(void)
+{
+    PlayVoice(V_SERVER_CONNECTED, PLAY_QUEUE);
+    tuya_message::Request req;
+    tuya_message::Result res = {};
+    TuyaComm::Get()->Send("ty_wifi_connect", &req, &res);
+    TuyaComm::Get()->ReportAll();
 }

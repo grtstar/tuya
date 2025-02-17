@@ -796,7 +796,12 @@ OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CH
     else
     {
         // get bind info from ap / wifi-smart / qrcode
-        printf("get wifi info ... ssid: %s, password: %s\n", ssid, passwd);
+        printf("get wifi info ... ssid: %s(%d), password: %s\n", ssid, strlen(ssid), passwd);
+    }
+    if(ssid[0] == 0)
+    {
+        printf("no ssid info\n");
+        return OPRT_COM_ERROR;
     }
 
     // Add a blocking operation for the wifi connection here.

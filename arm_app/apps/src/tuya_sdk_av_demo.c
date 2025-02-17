@@ -193,14 +193,14 @@ void* __audio_main(void* args)
     while (1) {
         /*获取到底层的音频流数据，该接口实际映射的是 tkl_ai_get_frame，需要开发者去适配 (可参考开发者文档)，
            demo 中是强制把固定的数据放到 tkl_ai_get_frame 中，去实现播放的闭环。*/
-        //if (0 == tal_ai_get_frame(0, 0, &frame)) {
-        if (0 <= rksound_record_get_frame(frame_buff, rksound_record_get_frame_size())) {
+        if (0 == tal_ai_get_frame(0, 0, &frame)) {
+        //if (0 <= rksound_record_get_frame(frame_buff, rksound_record_get_frame_size())) {
             if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] == NULL) { //音频流 ring buffer 空闲时，打开一个新的会话进行写入操作
                 s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN] = tuya_ipc_ring_buffer_open(0, 0, E_IPC_STREAM_AUDIO_MAIN, E_RBUF_WRITE);
             }
             
             if (s_ring_buffer_handles[E_IPC_STREAM_AUDIO_MAIN]) { //新的会话打开之后，将原始音频流数据放到 ring buffer 中
-#if 1
+#if 0
                 int sum = 0;
                 for(int i=0; i<rksound_record_get_frame_size(); i++)
                 {
@@ -270,9 +270,9 @@ void tuya_av_start(void)
     pthread_t main_pid = -1;
     pthread_t sub_pid = -1;
     pthread_t audio_pid = -1;
-    pthread_create(&main_pid, NULL, __video_main, NULL);
-    pthread_create(&sub_pid, NULL, __video_sub, NULL);
-    pthread_create(&audio_pid, NULL, __audio_main, NULL);
+    //pthread_create(&main_pid, NULL, __video_main, NULL);
+    // pthread_create(&sub_pid, NULL, __video_sub, NULL);
+    // pthread_create(&audio_pid, NULL, __audio_main, NULL);
 
     return;
 }

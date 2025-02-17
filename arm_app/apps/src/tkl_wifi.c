@@ -491,6 +491,11 @@ STATIC OPERATE_RET hwl_get_local_ip_info(char *interface,OUT NW_IP_S *ip)
     if(pIPStart != NULL){
         sscanf(pIPStart + strlen("inet addr:"), "%15s", ip->ip);
     }
+    else
+    {
+        pclose(pp);
+        return OPRT_COM_ERROR;
+    }
     /* finding gw  */
     char *pGWStart = strstr(tmp, "broadcast ");
     if(pGWStart != NULL){
@@ -795,7 +800,12 @@ OPERATE_RET tkl_wifi_station_connect(CONST SCHAR_T *ssid, CONST SCHAR_T *passwd)
         printf("get bind info ...\n");
     }else{
         //get bind info from ap / wifi-smart / qrcode
-        printf("get wifi info ...\n");
+        printf("get wifi info ... %s(%d) %s\n", ssid, strlen(ssid), passwd);
+    }
+    if(ssid[0] == 0)
+    {
+        printf("no ssid info\n");
+        return OPRT_COM_ERROR;
     }
 
     //TODO
@@ -968,6 +978,7 @@ OPERATE_RET tkl_wifi_station_get_status(WF_STATION_STAT_E *stat)
     {
         if (hwl_get_local_ip_info("wlan0", &ip) == OPRT_OK && strlen(ip.ip) > 0)
         {
+            printf("ip:%s\n", ip.ip);
             *stat = WSS_GOT_IP; // Be sure to return in real time
         }
         else

@@ -116,9 +116,9 @@ void rkencode_setup_480p(rkencoder *encoder);
 MPP_RET rkenc_cfg_setup(rkencoder *p);
 MPP_RET rkencode_reset(rkencoder *p);
 MPP_RET rkencode_setup(rkencoder *p);
-MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, size_t)> fn, bool is_init);
+MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, size_t, bool)> fn, bool is_init);
 void rkencode_deinit(rkencoder *enc);
-MPP_RET rkencode_init(rkencoder *p);
+MPP_RET rkencode_init(rkencoder *p, bool high_q);
 
 MPP_RET rkencode_put_frame(rkencoder *p, void* frame_buf);
 MPP_RET rkencode_get_sps(rkencoder *p, void* data, size_t *len);

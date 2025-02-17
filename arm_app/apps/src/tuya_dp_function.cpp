@@ -21,20 +21,10 @@
 #include "robot_msg.h"
 #include "voice.h"
 #include "curl/curl.h"
+#include "tuya.h"
 // DP 点
 #undef TAG
 #define TAG "DP"
-
-
-#include "voice.h"
-#include "mars_message/Event.hpp"
-void PlayVoice(int v, int param)
-{
-    Event voice;
-    voice.event = v;
-    voice.param = param;
-    TuyaComm::Get()->Publish("Voice", &voice);
-}
 
 using json = nlohmann::json;
 
@@ -686,6 +676,7 @@ void DP_ReportDeviceInfo(int dpId, std::string wifiName, int rssi, std::string i
     deviceInfo["BaseStationVersion"] = baseStationVersion;
     deviceInfo["BaseStationLocalVersion"] = baseStationLocalVersion;
     std::string raw = deviceInfo.dump();
+    LOGD(TAG, "DeviceInfo: {}", raw);
     dev_report_dp_raw_sync(NULL, dpId, (const uint8_t *)raw.c_str(), raw.length(), 200);
 }
 

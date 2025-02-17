@@ -105,8 +105,8 @@ void rkencode_setup_720p(rkencoder *encoder)
 
 void rkencode_setup_480p(rkencoder *encoder)
 {
-    encoder->width = 800;
-    encoder->height = 480;
+    encoder->width = 1280;
+    encoder->height = 720;
     encoder->hor_stride = MPP_ALIGN(encoder->width, 8);
     encoder->ver_stride = MPP_ALIGN(encoder->height, 2);
     encoder->fmt = MPP_FMT_YUV420SP;
@@ -678,7 +678,7 @@ MPP_RET rkencode_packet_release(rkencoder *p)
     return mpp_packet_deinit(&p->packet);
 }
 
-MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, size_t)> fn, bool is_init)
+MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, size_t, bool)> fn, bool is_init)
 {
     MppApi *mpi = p->mpi;
     MppCtx ctx = p->ctx;
@@ -697,7 +697,7 @@ MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, 
                 goto RET;
             } else {
                 /* get and write sps/pps for H.264 */
-                fn(mpp_packet_get_pos(packet), mpp_packet_get_length(packet));
+                fn(mpp_packet_get_pos(packet), mpp_packet_get_length(packet), false);
             }
             mpp_packet_deinit(&packet);
         }
@@ -714,17 +714,14 @@ MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, 
             printf("mpp_frame_init failed\n");
             goto RET;
         }
-        printf("------- %d ---------\n", __LINE__);
         mpp_frame_set_width(frame, p->width);
         mpp_frame_set_height(frame, p->height);
         mpp_frame_set_hor_stride(frame, p->hor_stride);
         mpp_frame_set_ver_stride(frame, p->ver_stride);
         mpp_frame_set_fmt(frame, p->fmt);
         mpp_frame_set_eos(frame, p->frm_eos);
-        printf("------- %d ---------\n", __LINE__);
 
         mpp_frame_set_buffer(frame, frame_buf);
-        printf("------- %d ---------\n", __LINE__);
         
         meta = mpp_frame_get_meta(frame);
         mpp_packet_init_with_buffer(&packet, p->pkt_buf);
@@ -732,7 +729,6 @@ MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, 
         mpp_packet_set_length(packet, 0);
         mpp_meta_set_packet(meta, KEY_OUTPUT_PACKET, packet);
         mpp_meta_set_buffer(meta, KEY_MOTION_INFO, p->md_info);
-        printf("------- %d ---------\n", __LINE__);
 
         ret = mpi->encode_put_frame(ctx, frame);
         if (ret) {
@@ -740,7 +736,6 @@ MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, 
             mpp_frame_deinit(&frame);
             goto RET;
         }
-        printf("------- %d ---------\n", __LINE__);
 
         mpp_frame_deinit(&frame);
         do {
@@ -751,11 +746,25 @@ MPP_RET rkencode_frame(rkencoder *p, void* frame_buf, std::function<void(void*, 
             }
 
             mpp_assert(packet);
-            printf("------- %d ---------\n", __LINE__);
 
             if (packet) {
                 size_t len = mpp_packet_get_length(packet);
-                fn(mpp_packet_get_pos(packet), len);
+                void *ptr = mpp_packet_get_pos(packet);
+                bool is_key_frame = false;
+                {
+                    // 判断 data 是否是 I 帧（IDR 帧）
+                    RK_U8 *pData = (RK_U8 *)ptr;
+                    // 判断起始码长度：有时起始码可能为 3 字节（0x000001）或 4 字节（0x00000001）
+                    int offset = (pData[2] == 0x01) ? 3 : 4;
+                    int nal_unit_type = pData[offset] & 0x1F;
+                    if (nal_unit_type == 5 || nal_unit_type == 7) {
+                        is_key_frame = true;
+                    } else {
+                        is_key_frame = false;
+                    }
+                }
+                
+                fn(ptr, len, is_key_frame);
                 
                 if (!p->first_pkt)
                     p->first_pkt = mpp_time();
@@ -1121,10 +1130,17 @@ void rkencode_deinit(rkencoder * enc)
     }
 }
 
-MPP_RET rkencode_init(rkencoder * p)
+MPP_RET rkencode_init(rkencoder * p, bool highQ)
 {
     MPP_RET ret = MPP_OK;
-    rkencode_setup_720p(p);
+    if(highQ)
+    {
+        rkencode_setup_720p(p);
+    }
+    else
+    {
+        rkencode_setup_480p(p);
+    }
     ret = rkencode_setup(p);
     if (ret) {
         printf("test mpp setup failed ret %d\n", ret);

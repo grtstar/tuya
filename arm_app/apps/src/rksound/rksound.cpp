@@ -1,4 +1,134 @@
+#include <stdio.h>
+#include "rksound.h"
+
+struct rksound
+{
+    bool pa_initialized;
+    PaStream *playback_stream;
+    PaStream *record_stream;
+} rk_sound;
+
+
+void rksound_init()
+{
+    if(rk_sound.pa_initialized == true) {
+        return;
+    }
+    PaError err;
+    // 初始化 PortAudio 库
+    err = Pa_Initialize();
+    if (err != paNoError) {
+        printf("初始化 PortAudio 失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+    rk_sound.pa_initialized = true;
+}
+
+void rksound_record_open(int sample_rate, int frame_size, int channels, audioCallback callback, void* userdata)
+{
+    rksound_init();
+    PaError err;
+    PaStreamParameters input_params;
+    input_params.device = 1;
+    input_params.channelCount = channels;
+    input_params.sampleFormat = paInt16;
+    input_params.suggestedLatency = Pa_GetDeviceInfo(input_params.device)->defaultLowInputLatency;
+    input_params.hostApiSpecificStreamInfo = NULL;
+    printf("打开录音设备\n");
+    err = Pa_OpenStream(&rk_sound.record_stream, &input_params, NULL, sample_rate, frame_size, paClipOff, callback, userdata);
+    if (err != paNoError) {
+        printf("打开录音设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+    printf("启动录音设备\n");
+    err = Pa_StartStream(rk_sound.record_stream);
+    if (err != paNoError) {
+        printf("启动录音设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+}
+
+void rksound_record_close()
+{
+    PaError err;
+    err = Pa_StopStream(rk_sound.record_stream);
+    if (err != paNoError) {
+        printf("停止录音设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+
+    err = Pa_CloseStream(rk_sound.record_stream);
+    if (err != paNoError) {
+        printf("关闭录音设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+}
+
+void rksound_play_open(int sample_rate, int frame_size, int channels, audioCallback callback, void* userdata)
+{
+    rksound_init();
+    PaError err;
+    PaStreamParameters output_params;
+    output_params.device = Pa_GetDefaultOutputDevice();
+    output_params.channelCount = channels;
+    output_params.sampleFormat = paInt16;
+    output_params.suggestedLatency = Pa_GetDeviceInfo(output_params.device)->defaultLowOutputLatency;
+    output_params.hostApiSpecificStreamInfo = NULL;
+
+    err = Pa_OpenStream(&rk_sound.playback_stream, NULL, &output_params, sample_rate, frame_size, paClipOff, callback, userdata);
+    if (err != paNoError) {
+        printf("打开播放设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+
+    err = Pa_StartStream(rk_sound.playback_stream);
+    if (err != paNoError) {
+        printf("启动播放设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+}
+
+void rksound_play_close()
+{
+    PaError err;
+    err = Pa_StopStream(rk_sound.playback_stream);
+    if (err != paNoError) {
+        printf("停止播放设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+
+    err = Pa_CloseStream(rk_sound.playback_stream);
+    if (err != paNoError) {
+        printf("关闭播放设备失败：%s\n", Pa_GetErrorText(err));
+        return;
+    }
+}
+
+int rksound_record_get_frame(uint8_t *frame, int frame_size)
+{
+    PaError err;
+    err = Pa_ReadStream(rk_sound.record_stream, frame, frame_size);
+    if (err != paNoError) {
+        printf("读取录音设备失败：%s\n", Pa_GetErrorText(err));
+        return -1;
+    }
+    return 0;
+}
+
+int rksound_play_pcm(uint8_t *frame, int frame_size)
+{
+    PaError err;
+    err = Pa_WriteStream(rk_sound.playback_stream, frame, frame_size);
+    if (err != paNoError) {
+        printf("写入播放设备失败：%s\n", Pa_GetErrorText(err));
+        return -1;
+    }
+    return 0;
+}
+
+#if 0
 #include <alsa/asoundlib.h>
+#include <vector>
 #include <mutex>
 #include "rksound.h"
 
@@ -42,7 +172,7 @@ void rksound_record_open(void)
     printf("设置音频格式\n");
     snd_pcm_hw_params_set_format(rk_sound.record_handle, params, SND_PCM_FORMAT_S16_LE);
     printf("设置音频通道\n");
-    snd_pcm_hw_params_set_channels(rk_sound.record_handle, params, 1);
+    snd_pcm_hw_params_set_channels(rk_sound.record_handle, params, 4);
     printf("设置音频采样率\n");
     snd_pcm_hw_params_set_rate_near(rk_sound.record_handle, params, &sample_rate, &dir);
     printf("设置音频周期\n");
@@ -184,21 +314,33 @@ void rksound_play_pcm(const uint8_t *pcm_data, int data_size)
         return;
     }
     std::lock_guard<std::mutex> lock(rk_sound.playback_mtx);
-
-    int bytes_per_frame = 2; // 单通道 16 位 = 2 字节
-    snd_pcm_uframes_t total_frames = data_size / bytes_per_frame;
-    const uint8_t* ptr = pcm_data;
-    printf("开始播放音频数据，总帧数:%lu\n", (unsigned long)total_frames);
-    while (total_frames > 0) {
-        int frames_written = snd_pcm_writei(rk_sound.playback_handle, ptr, total_frames);
-        if (frames_written < 0) {
-            frames_written = snd_pcm_recover(rk_sound.playback_handle, frames_written, 0);
+    // 单声道数据转为双声道
+    std::vector<uint8_t> stereo_buffer(data_size * 2);
+    for (int i = 0, j = 0; i < data_size; i += 2, j += 4) {
+        stereo_buffer[j]     = pcm_data[i];
+        stereo_buffer[j + 1] = pcm_data[i + 1];
+        stereo_buffer[j + 2] = pcm_data[i];
+        stereo_buffer[j + 3] = pcm_data[i + 1];
+    }
+    pcm_data = stereo_buffer.data();
+    data_size *= 2;
+    int bytes_per_frame = 4; // 单通道 16 位 = 2 字节
+    {
+        snd_pcm_uframes_t total_frames = data_size / bytes_per_frame;
+        const uint8_t* ptr = pcm_data;
+        printf("开始播放音频数据 L，总帧数:%lu\n", (unsigned long)total_frames);
+        while (total_frames > 0) {
+            int frames_written = snd_pcm_writei(rk_sound.playback_handle, ptr, total_frames);
             if (frames_written < 0) {
-                printf("ERROR: 播放错误 (%s)\n", snd_strerror(frames_written));
-                break;
+                frames_written = snd_pcm_recover(rk_sound.playback_handle, frames_written, 0);
+                if (frames_written < 0) {
+                    printf("ERROR: 播放错误 (%s)\n", snd_strerror(frames_written));
+                    break;
+                }
             }
+            total_frames -= frames_written;
+            ptr += frames_written * bytes_per_frame;
         }
-        total_frames -= frames_written;
-        ptr += frames_written * bytes_per_frame;
     }
 }
+#endif
