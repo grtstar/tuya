@@ -374,8 +374,11 @@ void TuyaReportStatus(tuya_message::RobotState status)
     // 166 上传日志
     dps.emplace_back(DPReport(166, status.log_upload));
 
+    for(int i=0; i<dps.size(); i++)
+    {
+    dev_report_dp_json_async(NULL, &dps[i], 1);
 
-    dev_report_dp_json_async(NULL, &dps[0], dps.size());
+    }
 
     static int64_t lastDeviceInfoTime = 0;
 
@@ -387,17 +390,17 @@ void TuyaReportStatus(tuya_message::RobotState status)
     extern std::string soft_version;
     extern std::string MCU_version;
     extern std::string system_version;
-    if (TimeTick::Ms() - lastDeviceInfoTime > 10 * 1000)
+    if (TimeTick::Ms() - lastDeviceInfoTime > 10 * 1000 || lastDeviceInfoTime == 0)
     {
         lastDeviceInfoTime = TimeTick::Ms();
-
+        LOGD(TAG, "上传设备信息");
         char ssid[128] = {0};
         tuya_adapter_wifi_get_ssid(ssid);
         std::string wifiName = ssid;
 
-        int rssi = 0;
         SCHAR_T rssiT;
         tuya_adapter_wifi_station_get_conn_ap_rssi(&rssiT);
+        int rssi = rssiT;
 
         NW_IP_S ips = {0};
         tuya_adapter_wifi_get_ip(WF_STATION, &ips);

@@ -49,6 +49,7 @@ extern "C" int tuya_wifi_init(void);
 IPC_MGR_INFO_S s_mgr_info = {0};
 CHAR_T s_raw_path[128] = {0};
 
+bool is_online = false;
 STATIC VOID __IPC_APP_Get_Net_Status_cb(IN CONST BYTE_T stat)
 {
     LOGD(TAG, "Net status change to:{}", stat);
@@ -64,17 +65,22 @@ STATIC VOID __IPC_APP_Get_Net_Status_cb(IN CONST BYTE_T stat)
 #endif
         {
             IPC_APP_Notify_LED_Sound_Status_CB(IPC_MQTT_ONLINE);
-            PlayVoice(V_SERVER_CONNECTED, PLAY_QUEUE);
+            if(!is_online)
+            {
+                is_online = true;
+                PlayVoice(V_SERVER_CONNECTED, PLAY_QUEUE);
+            }
             tuya_message::Request req;
             tuya_message::Result res = {};
             TuyaComm::Get()->Send("ty_wifi_connect", &req, &res);
             TuyaComm::Get()->ReportAll();
-            //strcpy(NULL, "SigFault Test");
+            LOGD(TAG, "mqtt is online");
             break;
         }
         case STAT_STA_DISC:
             break;
         case STAT_OFFLINE:
+            LOGD(TAG, "mqtt is offline");
             break;
         default:
         {

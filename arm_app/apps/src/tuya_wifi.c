@@ -855,19 +855,31 @@ OPERATE_RET tuya_adapter_wifi_station_disconnect(VOID)
 OPERATE_RET tuya_adapter_wifi_station_get_conn_ap_rssi(OUT SCHAR_T *rssi)
 {
     LOGF;
-    if (NULL == rssi)
-    {
+    if(NULL == rssi){
         return OPRT_INVALID_PARM;
     }
     *rssi = 0;
-
-#ifdef __HuaweiLite__
-    // todo
-    // liteos system
-    // Implementation of RSSI acquisition
-#else
-    
-#endif
+    FILE *cmd = popen("iw wlan0 link", "r");
+    if (!cmd) {
+        return OPRT_COM_ERROR;
+    }
+    char buf[128] = {0};
+    while (fgets(buf, sizeof(buf), cmd)) {
+        char *p = strstr(buf, "signal: ");
+        if (p) {
+            int sig = 0;
+            if (sscanf(p + strlen("signal: "), "%d", &sig) == 1) {
+                if (sig <= -100)
+                    *rssi = 0;
+                else if (sig >= -50)
+                    *rssi = 100;
+                else
+                    *rssi = 2 * (sig + 100);
+                break;
+            }
+        }
+    }
+    pclose(cmd);
     printf("Get Conn AP RSSI:%d\r\n", *rssi);
 
     return OPRT_OK;
@@ -881,7 +893,7 @@ OPERATE_RET tuya_adapter_wifi_get_bssid(UCHAR_T *mac)
     {
         memcpy(mac, sta_info.bssid, sizeof(sta_info.bssid));
     }
-    return 0;
+    return OPRT_OK;
 }
 
 OPERATE_RET tuya_adapter_wifi_get_ssid(char *ssid)

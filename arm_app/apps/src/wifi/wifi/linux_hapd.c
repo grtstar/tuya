@@ -974,7 +974,7 @@ static int linux_ap_hapd_disable()
 	}
 
 	system("ifconfig wlan0 0.0.0.0");
-	system("rm -rf /var/lib/misc/");
+	//system("rm -rf /var/lib/misc/");
 	system("pidof dnsmasq | xargs kill -9");
 
 	return WMG_STATUS_SUCCESS;

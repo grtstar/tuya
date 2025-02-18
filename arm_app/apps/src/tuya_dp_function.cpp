@@ -678,6 +678,7 @@ void DP_ReportDeviceInfo(int dpId, std::string wifiName, int rssi, std::string i
     deviceInfo["BaseStationVersion"] = baseStationVersion;
     deviceInfo["BaseStationLocalVersion"] = baseStationLocalVersion;
     std::string raw = deviceInfo.dump();
+    LOGD(TAG, "DeviceInfo: {}", raw);
     dev_report_dp_raw_sync(NULL, dpId, (const uint8_t *)raw.c_str(), raw.length(), 200);
 }
 
