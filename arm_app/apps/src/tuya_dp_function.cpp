@@ -306,6 +306,7 @@ void DP_HandleSeek(TY_OBJ_DP_S *dp)
 /*
 枚举值：forward, backward, turn_left, turn_right, stop, exit
 默认值（不可修改、删除、增加），按键按下下发对应的方向值，松手下发停
+
 */
 TY_OBJ_DP_S DP_ReportDirectionControl(int dpId, int direction)
 {
@@ -317,7 +318,21 @@ void DP_HandleDirectionControl(TY_OBJ_DP_S *dp)
     tuya_message::Request req = {direction};
     tuya_message::Result res = {};
     TuyaComm::Get()->Send("ty_direction", &req, &res);
-
+    switch(direction)
+    {
+        case 0:
+        direction = 0;
+        break;
+        case 1:
+        direction = 2;
+        break;
+        case 2:
+        direction = 3;
+        break;
+        case 3:
+        direction = 4;
+        break;
+    }
     TY_OBJ_DP_S d = DP_ReportDirectionControl(dp->dpid, direction);
     dev_report_dp_json_async(NULL, &d, 1);
 }
