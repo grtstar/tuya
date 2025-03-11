@@ -27,6 +27,7 @@
 #include "mars_message/AppCleanRecord.hpp"
 
 #include "message/tuya_messages.h"
+#include "oal/timer.h"
 
 using namespace mars_message;
 
@@ -105,8 +106,16 @@ public:
 
     void HandleForever()
     {
-        handlerId = pthread_self();
-        while (0 == lcm_->handle());
+        Timer deviceInfoTimer(300000);
+        while(true)
+        {
+            if(deviceInfoTimer.IsTimeOut())
+            {
+                ReportDeviceInfo();
+                deviceInfoTimer.Reset();
+            }
+            HandleTimeout(1);
+        }
     }
 
     int HandleTimeout(int timeoutMs)
@@ -131,13 +140,14 @@ public:
     void OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
 public:
     void ReportStatus();
+    void ReportDeviceInfo();
     void ReportMap();
     void ReportPath();
     void ReportMapAll();
     void ReportAll();
     void ReportPartsLife();
     void ReportCleanInfo();
-    void ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod);
+    bool ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod);
 };
 
 void TuyaReportStatus(SweeperStatus status);

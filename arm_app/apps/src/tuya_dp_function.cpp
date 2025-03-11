@@ -28,6 +28,8 @@
 #undef TAG
 #define TAG "DP"
 
+#define ALL_CLOUD_MAP
+
 using json = nlohmann::json;
 
 typedef std::function<int(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)> curl_info_cb;
@@ -297,7 +299,7 @@ TY_OBJ_DP_S DP_ReportSeek(int dpId, bool b)
 void DP_HandleSeek(TY_OBJ_DP_S *dp)
 {
     bool b = dp->value.dp_bool;
-    PlayVoice(V_SEEK_ROBOT, 1);
+    PlayVoice(V_SEEK_ROBOT, 2);
 
     TY_OBJ_DP_S d = DP_ReportSeek(dp->dpid, 0);
     dev_report_dp_json_async(NULL, &d, 1);
@@ -315,9 +317,6 @@ TY_OBJ_DP_S DP_ReportDirectionControl(int dpId, int direction)
 void DP_HandleDirectionControl(TY_OBJ_DP_S *dp)
 {
     int direction = dp->value.dp_enum;
-    tuya_message::Request req = {direction};
-    tuya_message::Result res = {};
-    TuyaComm::Get()->Send("ty_direction", &req, &res);
     switch(direction)
     {
         case 0:
@@ -333,6 +332,9 @@ void DP_HandleDirectionControl(TY_OBJ_DP_S *dp)
         direction = 4;
         break;
     }
+    tuya_message::Request req = {direction};
+    tuya_message::Result res = {};
+    TuyaComm::Get()->Send("ty_direction", &req, &res);
     TY_OBJ_DP_S d = DP_ReportDirectionControl(dp->dpid, direction);
     dev_report_dp_json_async(NULL, &d, 1);
 }
@@ -1955,6 +1957,19 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
 
             break;
         case 0x15:
+            LOGD(TAG, "获取选区清扫状态");
+            {
+                tuya_message::Request req = {};
+                AppRoomClean room;
+                if(TuyaComm::Get()->Send("ty_get_clean_blocks", &req, &room) && room.count > 0)
+                {
+                    TuyaReportRoomClean(dpId, 0x15, &room);
+                }
+                else
+                {
+                    LOGE(TAG, "无法获取到分区清扫信息");
+                }
+            }
             break;
         case 0x16: // 定点清扫 v1.0.0
         case 0x17:
@@ -2645,6 +2660,146 @@ void TuyaReportMapSaveResult(int dpId, uint8_t cmd, uint8_t ret)
 }
 
 // 拓展功能
+#ifdef ALL_CLOUD_MAP
+int TuyaUploadMapFile2(int currId, uint32_t & tuyaMapId, bool update)
+{
+    // 获取当前地图文件
+    tuya_message::Request req = {0};
+    mars_message::AppMap map;
+    if (TuyaComm::Get()->Send("ty_get_map", &req, &map))
+    {
+        TuyaMap tuya = ToTuyaMap(map);
+        SaveTuyaMap(tuya, "/tmp/map.bin");
+    }
+    else
+    {
+        LOGE(TAG, "无法获取实时地图");
+    }
+
+    std::string mapBin = "/tmp/map.bin";
+    std::ifstream mapFile(mapBin, std::ios::binary);
+    if (!mapFile.is_open())
+    {
+        LOGE(TAG, "Failed to open map file: {}", mapBin);
+        return -1;
+    }
+    std::vector<uint8_t> mapData((std::istreambuf_iterator<char>(mapFile)), std::istreambuf_iterator<char>());
+    mapFile.close();
+
+    // 获取虚拟墙数据
+    AppVirtualWall wall;
+    std::vector<uint8_t> tuyaVirtualWall;
+    wall.version = 0;
+    wall.count = 0;
+    if (TuyaComm::Get()->Send("ty_get_virtual_wall", &req, &wall) && wall.version >= 0)
+    {
+        tuyaVirtualWall = ToVirtualWallData(wall.version == 0 ? 0x13 : 0x49, &wall);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到虚拟墙信息");
+    }
+
+    // 获取禁区数据
+    AppRestrictedArea area;
+    std::vector<uint8_t> tuyaRestrictedArea;
+    if (TuyaComm::Get()->Send("ty_get_restricted_area", &req, &area) && area.version >= 0)
+    {
+        tuyaRestrictedArea = ToRestrictedAreaData(area.version == 0 ? 0x1B : 0x39, &area);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到禁区/划区信息");
+    }
+
+    // 拼接 mapData, tuyaVirtualWall 和 tuyaRestrictedArea
+    std::vector<uint8_t> combinedData;
+    combinedData.insert(combinedData.end(), mapData.begin(), mapData.end());
+    combinedData.insert(combinedData.end(), tuyaVirtualWall.begin(), tuyaVirtualWall.end());
+    combinedData.insert(combinedData.end(), tuyaRestrictedArea.begin(), tuyaRestrictedArea.end());
+
+    // 保存到文件
+    std::string combinedFile = "/tmp/mm_map_" + std::to_string(currId) + ".bin";
+    std::ofstream outFile(combinedFile, std::ios::binary);
+    if (!outFile.is_open())
+    {
+        LOGE(TAG, "Failed to open output file: {}", combinedFile);
+        return -1;
+    }
+    outFile.write(reinterpret_cast<const char *>(combinedData.data()), combinedData.size());
+    outFile.close();
+
+  
+
+    // 上传到云端
+    time_t t;
+    time(&t);
+    
+    char descript[128];
+    snprintf(descript, 128, "Map_%d_%ld", currId, t);
+    int ret;
+    if(update)
+    {
+          // 将 ./maps/0 打包，不保留目录结构
+        system("rm -f /tmp/0.tar.gz");
+        system("cd /data/xd/maps && tar -czf /tmp/0.tar.gz 0");
+        
+        ret = tuya_iot_map_update_files(tuyaMapId, combinedFile.c_str(), "/tmp/0.tar.gz");
+        system(("rm -f " + combinedFile).c_str());
+        LOGD(TAG, "tuya_iot_map_update_files ret:{}, mapId:{}", ret, tuyaMapId);
+    }
+    else
+    {
+        UINT_T mapId = 0;
+        // 上传一个小文件，获取 mapId 后，将 mapId 打包后重新上传
+        system("echo 0 > /tmp/0.txt");
+        ret = tuya_iot_map_upload_files(combinedFile.c_str(), "/tmp/0.txt", descript, &mapId);
+        if(ret == OPRT_OK)
+        {
+            tuyaMapId = mapId;
+            // 将 tuyaMapId 写入到 /data/xd/maps/tuya_map_id.txt
+            std::ofstream mapIdFile("/data/xd/maps/0/tuya_map_id.txt");
+            if (mapIdFile.is_open())
+            {
+                mapIdFile << mapId;
+                mapIdFile.close();
+            }
+            else
+            {
+                LOGE(TAG, "Failed to open output file: /data/xd/maps/tuya_map_id.txt");
+            }
+            // 将 ./maps/0 打包，不保留目录结构
+            system("rm -f /tmp/0.tar.gz");
+            system("cd /data/xd/maps && tar -czf /tmp/0.tar.gz 0");
+            ret = tuya_iot_map_update_files(tuyaMapId, combinedFile.c_str(), "/tmp/0.tar.gz");
+        }
+        system(("rm -f " + combinedFile).c_str());
+        LOGD(TAG, "tuya_iot_map_upload_files ret:{}, mapId:{}", ret, mapId);
+    }
+   
+    return ret;
+}
+int TuyaUpdateMapFile(int currId, uint32_t tuyaMapId)
+{
+    // 从 /data/xd/maps/0/tuya_map_id.txt 读取 tuyaMapId
+    std::ifstream mapIdFile("/data/xd/maps/0/tuya_map_id.txt");
+    if (mapIdFile.is_open())
+    {
+        mapIdFile >> tuyaMapId;
+        mapIdFile.close();
+    }
+    else
+    {
+        LOGE(TAG, "Failed to open input file: /data/xd/maps/0/tuya_map_id.txt");
+        return -1;
+    }
+    return TuyaUploadMapFile2(currId, tuyaMapId, true);
+}
+int TuyaUploadMapFile(int currId, uint32_t & tuyaMapId)
+{
+    return TuyaUploadMapFile2(currId, tuyaMapId, false);
+}
+#else
 int TuyaUpdateMapFile(int currId, uint32_t tuyaMapId)
 {
      std::string mapBin = "/tmp/map.bin";
@@ -2718,12 +2873,10 @@ int TuyaUpdateMapFile(int currId, uint32_t tuyaMapId)
     
     char descript[128];
     snprintf(descript, 128, "Map_%d_%ld", currId, t);
-    UINT_T mapId = 0;
     int ret = tuya_iot_map_update_files(tuyaMapId, combinedFile.c_str(), currIdFile.c_str());
-    tuyaMapId = mapId;
     system(("rm -f " + combinedFile).c_str());
     system(("rm -f " + currIdFile).c_str());
-    LOGD(TAG, "tuya_iot_map_upload_files ret:{}, mapId:{}", ret, mapId);
+    LOGD(TAG, "tuya_iot_map_upload_files ret:{}, mapId:{}", ret, tuyaMapId);
     return ret;
 }
 
@@ -2809,6 +2962,7 @@ int TuyaUploadMapFile(int currId, uint32_t & tuyaMapId)
     LOGD(TAG, "tuya_iot_map_upload_files ret:{}, mapId:{}", ret, mapId);
     return ret;
 }
+#endif
 
 void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
 {
@@ -2821,6 +2975,23 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
     {
     case 0x2A: // 保存地图
         LOGD(TAG, "保存地图 in {}", data[7]);
+#ifdef ALL_CLOUD_MAP
+        // 如果是全云端版本，保存地图时只需将本地地图全部传到云端
+        {
+            uint32_t tuyaMapId;
+            int ret = TuyaUploadMapFile(0, tuyaMapId); // 上传地图文件
+            if (ret == 0)
+            {
+                LOGD(TAG, "保存成功");
+                TuyaReportMapSaveResult(dpId, 0x2B, 0x01); // ret：0x00 保存失败、0x01 保存成功、0x02：本地空间已满
+            }
+            else
+            {
+                LOGD(TAG, "保存失败");
+                TuyaReportMapSaveResult(dpId, 0x2B, 0x00);
+            }
+        }
+#else
         {
             tuya_message::Request req = {0};
             tuya_message::Result res;
@@ -2858,11 +3029,25 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
                 TuyaReportMapSaveResult(dpId, 0x2B, 0x00);
             }
         }
+#endif
         break;
     case 0x2C: // 删除地图
     {
         uint32_t mapId = nbto32(&data[7]);
         LOGD(TAG, "删除地图 id:{}", mapId);
+#ifdef ALL_CLOUD_MAP
+        // 如果是全云端版本，只需删除云端地图
+        if (tuya_iot_map_delete(mapId) == 0)
+        {
+            LOGD(TAG, "删除成功");
+            TuyaReportMapSaveResult(dpId, 0x2D, 0x01);
+        }
+        else
+        {
+            LOGD(TAG, "删除失败");
+            TuyaReportMapSaveResult(dpId, 0x2D, 0x00);
+        }
+#else
         tuya_message::Request req = {(int)mapId};
         tuya_message::Result res;
         if(TuyaComm::Get()->Send("ty_delete_map_by_tuya_id", &req, &res))
@@ -2883,10 +3068,54 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
             LOGD(TAG, "删除失败");
             TuyaReportMapSaveResult(dpId, 0x2D, 0x00);
         }
+#endif
     }
     break;
     case 0x2E: // 使用地图
     {
+#ifdef ALL_CLOUD_MAP
+        // 如果是全云端版本，需要下载地图到本地
+        uint32_t mapId = nbto32(&data[7]);
+        uint32_t urlLen = nbto32(&data[11]);
+        std::string url((char *)&data[15], urlLen);
+        LOGD(TAG, "使用地图 id:{}, url:{}", mapId, url);
+        if(0 == download_file("/tmp/mapinfo.tar.gz", url.c_str(), [](void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) -> int
+        {
+            return 0;
+        }))
+        {
+            int r = system("rm -rf /tmp/0"); 
+            r += system("tar -zxf /tmp/mapinfo.tar.gz -C /tmp");
+            r += system("rm -rf /data/xd/map/0/*");
+            r += system("mv /tmp/0/* /data/xd/maps/0/");
+            if (r != 0) {
+                LOGD(TAG, "Failed to execute system commands with error code: {}", r);
+                LOGD(TAG, "使用地图失败");
+                TuyaReportMapSaveResult(dpId, 0x2F, 0x00);
+            }
+            else
+            {
+                system("rm -f /tmp/mapinfo.tar.gz");
+                tuya_message::Request req = {0};
+                tuya_message::Result res;
+                if(TuyaComm::Get()->Send("ty_change_map_by_tuya_id", &req, &res, 2000) && res.code == 0)
+                {
+                    LOGD(TAG, "使用地图成功");
+                    TuyaReportMapSaveResult(dpId, 0x2F, 0x01);
+                }
+                else
+                {
+                    LOGD(TAG, "使用地图失败");
+                    TuyaReportMapSaveResult(dpId, 0x2F, 0x00);
+                }
+            }
+        }
+        else
+        {
+            LOGD(TAG, "使用地图失败");
+            TuyaReportMapSaveResult(dpId, 0x2F, 0x00);
+        }
+#else
         uint32_t mapId = nbto32(&data[7]);
         uint32_t urlLen = nbto32(&data[11]);
         std::string url((char *)&data[15], urlLen);
@@ -2903,6 +3132,7 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
             LOGD(TAG, "使用地图失败");
             TuyaReportMapSaveResult(dpId, 0x2F, 0x00);
         }
+#endif
     }
     break;
     case 0x34: // 语音包下载
@@ -2935,7 +3165,7 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
                     system("rm -rf /data/voice/now");
                     system(("ln -sf /data/voice/" + std::to_string(langId) + " " + "/data/voice/now").c_str());
                     TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x03, 0);
-                    PlayVoice(V_SEEK_ROBOT, 0);
+                    PlayVoice(V_SEEK_ROBOT, 2);
                     return;
                 }
             }
@@ -3004,7 +3234,7 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
                 if(err == 0)
                 {
                     TuyaReportVoiceDownLoadResult(dpId, version, langId, fileVersion, 0x03, 0);
-                    PlayVoice(V_SEEK_ROBOT, 0);
+                    PlayVoice(V_SEEK_ROBOT, 2);
                 }
                 else
                 {
@@ -3065,7 +3295,7 @@ int download_file(const char *file_name, const char *url, curl_info_cb info_cb)
     LOGL(TAG);
 	CURLcode ret = curl_easy_perform(curl);
 	if(ret != CURLE_OK){
-		LOGE(TAG, "curl_easy_perform download fail, reason : %s.\n", curl_easy_strerror(ret));
+		LOGE(TAG, "curl_easy_perform download fail, reason : {}", curl_easy_strerror(ret));
 	}
 	fclose(fp);
 	curl_easy_cleanup(curl);

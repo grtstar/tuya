@@ -380,8 +380,11 @@ void TuyaReportStatus(tuya_message::RobotState status)
 
     }
 
-    static int64_t lastDeviceInfoTime = 0;
+ 
+}
 
+void TuyaComm::ReportDeviceInfo(void)
+{
     extern std::string id;
     extern std::string uuid;
     extern std::string authKey;
@@ -390,9 +393,7 @@ void TuyaReportStatus(tuya_message::RobotState status)
     extern std::string soft_version;
     extern std::string MCU_version;
     extern std::string system_version;
-    if (TimeTick::Ms() - lastDeviceInfoTime > 10 * 1000 || lastDeviceInfoTime == 0)
     {
-        lastDeviceInfoTime = TimeTick::Ms();
         LOGD(TAG, "上传设备信息");
         char ssid[128] = {0};
         tuya_adapter_wifi_get_ssid(ssid);
@@ -546,7 +547,13 @@ void TuyaComm::OnRestrictedArea(const lcm::ReceiveBuffer *rbuf, const std::strin
 
 void TuyaComm::OnCleanRecord(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppCleanRecord *msg)
 {
-    ReportCleanRecords(msg->recordId, msg->cleanTimeSecond/60.0 + 0.5, msg->cleanArea, (msg->cleanMode), ((CleanMethod)msg->cleanMethod), msg->finishResult, msg->startReason);
+    for(int i=0; i<3; i++)
+    {
+        if(ReportCleanRecords(msg->recordId, msg->cleanTimeSecond/60.0 + 0.5, msg->cleanArea, (msg->cleanMode), ((CleanMethod)msg->cleanMethod), msg->finishResult, msg->startReason))
+        {
+            break;
+        }
+    }
 }
 
 void TuyaComm::OnSchedule(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppLocalAlert *msg)
@@ -657,7 +664,7 @@ void TuyaComm::ReportCleanInfo()
     }
 }
 
-void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod) 
+bool TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod) 
 {
     time_t nowTime = time(NULL);
     struct tm *local = localtime(&nowTime);
@@ -673,7 +680,7 @@ void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, in
     if (!mapFile.is_open())
     {
         LOGE(TAG, "Failed to open map file: {}", mapBin);
-        return ;
+        return false;
     }
     std::vector<uint8_t> mapData((std::istreambuf_iterator<char>(mapFile)), std::istreambuf_iterator<char>());
     mapFile.close();
@@ -684,7 +691,7 @@ void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, in
     if (!pathFile.is_open())
     {
         LOGE(TAG, "Failed to open path file: {}", pathBin);
-        return ;
+        return false;
     }
     std::vector<uint8_t> pathData((std::istreambuf_iterator<char>(pathFile)), std::istreambuf_iterator<char>());
     pathFile.close();
@@ -737,7 +744,9 @@ void TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, in
     {
         LOGE(TAG, "upload map id:{} record files fail, ret {}", recordId,
            op_ret);
+        return false;
     }
+    return true;
 }
 
 void TuyaComm::ReportMap()
@@ -858,6 +867,7 @@ void TuyaComm::ReportAll()
 
     // 全量地图数据 机器电量、边刷、滚刷、滤网寿命 音量设置等
     ReportStatus();
+    ReportDeviceInfo();
     ReportPartsLife();
     ReportCleanInfo();
     ReportMapAll();
