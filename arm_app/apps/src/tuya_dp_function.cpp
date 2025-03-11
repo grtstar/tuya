@@ -3295,7 +3295,7 @@ int download_file(const char *file_name, const char *url, curl_info_cb info_cb)
     LOGL(TAG);
 	CURLcode ret = curl_easy_perform(curl);
 	if(ret != CURLE_OK){
-		LOGE(TAG, "curl_easy_perform download fail, reason : {}", curl_easy_strerror(ret));
+		LOGE(TAG, "curl_easy_perform download fail, reason : {}, {}", ret, curl_easy_strerror(ret));
 	}
 	fclose(fp);
 	curl_easy_cleanup(curl);
