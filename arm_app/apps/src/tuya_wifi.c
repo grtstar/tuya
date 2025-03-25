@@ -672,14 +672,11 @@ OPERATE_RET tuya_adapter_wifi_set_work_mode(IN CONST WF_WK_MD_E mode)
 
 OPERATE_RET tuya_adapter_wifi_get_work_mode(OUT WF_WK_MD_E *mode)
 {
-    // LOGF;
+    LOGF;
     if (NULL == mode)
     {
         return OPRT_INVALID_PARM;
     }
-
-    *mode = _wifiMode;
-    return OPRT_OK;
 
 #ifdef __HuaweiLite__
     // todo liteos system
@@ -719,7 +716,7 @@ OPERATE_RET tuya_adapter_wifi_get_work_mode(OUT WF_WK_MD_E *mode)
         break;
     }
 #endif
-
+    printf("WIFI Get Mode %d\n", *mode);
     return OPRT_OK;
 }
 
@@ -796,7 +793,12 @@ OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CH
     else
     {
         // get bind info from ap / wifi-smart / qrcode
-        printf("get wifi info ... ssid: %s, password: %s\n", ssid, passwd);
+        printf("get wifi info ... ssid: %s(%d), password: %s\n", ssid, strlen(ssid), passwd);
+    }
+    if(ssid[0] == 0)
+    {
+        printf("no ssid info\n");
+        return OPRT_COM_ERROR;
     }
 
     // Add a blocking operation for the wifi connection here.
@@ -826,6 +828,8 @@ OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CH
     if(WMG_STATUS_SUCCESS != r)
     {
         printf("wifi_sta_connect failed: %d\n", r);
+        r = wifi_sta_auto_reconnect(1);
+        printf("wifi_sta_auto_reconnect: %d\n", r);
         return OPRT_COM_ERROR;
     }
 #endif
@@ -938,6 +942,7 @@ int _RK_wifi_state_callback(RK_WIFI_RUNNING_State_e state)
 
 OPERATE_RET tuya_adapter_wifi_station_get_status(OUT WF_STATION_STAT_E *stat)
 {
+    LOGF;
     if (NULL == stat)
     {
         return OPRT_INVALID_PARM;
@@ -997,15 +1002,40 @@ OPERATE_RET tuya_adapter_wifi_station_get_status(OUT WF_STATION_STAT_E *stat)
 
     printf("======> tuya_adapter_wifi_station_get_status %d\n", *stat);
 #else
-    if (hwl_get_local_ip_info("wlan0", &ip) == OPRT_OK)
-    {
-
-        *stat = WSS_GOT_IP; // Be sure to return in real time
+    // Check if WiFi is connected using iw wlan0 link command
+    FILE *pp = popen("iw wlan0 link", "r");
+    if (pp == NULL) {
+        *stat = WSS_IDLE;
+        return OPRT_COM_ERROR;
     }
-    else
-    {
+
+    char tmp[256] = {0};
+    bool connected = false;
+    while (fgets(tmp, sizeof(tmp), pp) != NULL) {
+        if (strstr(tmp, "Not connected") == NULL && strlen(tmp) > 5) {
+            connected = true;
+            break;
+        }
+    }
+    pclose(pp);
+
+    if (connected) {
+        // Further check if we have an IP address
+        if (hwl_get_local_ip_info("wlan0", &ip) == OPRT_OK) {
+            *stat = WSS_GOT_IP;
+        } else {
+            *stat = WSS_IDLE;
+        }
+    } else {
+        static int count = 0;
+        if(count++ == 20)
+        {
+            wifi_sta_auto_reconnect(1);
+            count = 0;
+        }
         *stat = WSS_IDLE;
     }
+    printf("======> tuya_adapter_wifi_station_get_status %d\n", *stat);
 #endif
     // Reserved
     return OPRT_OK;

@@ -26,6 +26,9 @@
 
 #define APP_VERSION_FILE "/userdata/version/soft_version.json" 
 
+tuya_message::RobotState sweeper = {0};
+AppMap nowAppMap = {0};
+
 // 1. 清扫记录
 void ReportCleanRecord(uint16_t recordId, std::string beginTime, int cleanTimeMinute,
                        int cleanArea, int mapLen, int pathLen, int virtualLen,
@@ -270,7 +273,6 @@ TY_OBJ_DP_S DPReport(int dpId, int32_t value)
     return DPReportValue(dpId, value);
 }
 
-tuya_message::RobotState sweeper = {0};
 
 void TuyaReportStatus(tuya_message::RobotState status)
 {
@@ -427,14 +429,21 @@ void TuyaComm::ReportStatus()
 {
     tuya_message::Request req = {0};
     tuya_message::RobotState state = {0};
-    if(Send("ty_state", &req, &state))
+    LOGD(TAG, "获取设备状态");
+    if(Send("ty_state", &req, &state, 1000))
     {
         TuyaReportStatus(state);
     }
+    else
+    {
+        LOGE(TAG, "无法获取到设备状态");
+    }
 }
+
 
 void TuyaComm::OnMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppMap *msg)
 {
+    nowAppMap = *msg;
     TuyaMap map = ToTuyaMap(*msg);
     SaveTuyaMap(map, "/tmp/map.bin");
 }
@@ -662,6 +671,18 @@ void TuyaComm::ReportCleanInfo()
     {
         LOGE(TAG, "无法获取到 CleanInfo");
     }
+    // 上报清扫顺序
+    LOGD(TAG, "ReportCleanSequence");
+    AppSetCleaningSequence order = {};
+    if(Send("ty_get_cleaning_sequence", &req, &order))
+    {
+        TuyaReportCleaningSequence(GetRawDpId(DPRaw_HandleCommand), 0x27, &order);
+    }
+    else
+    {
+        LOGE(TAG, "无法获取到 CleanSequence");
+    }
+
 }
 
 bool TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, int cleanMode, int workMode, int cleaningResult, int startMethod) 
@@ -675,7 +696,25 @@ bool TuyaComm::ReportCleanRecords(int recordId, int cleanTime, int cleanArea, in
     char descript[128] = {0};
 
   // 获取当前地图文件
-    std::string mapBin = "/tmp/map.bin";
+    if(sweeper.costomize_mode_switch == 0)
+    {
+        for(auto & roomProp : nowAppMap.roomPropeties)
+        {
+            roomProp.cleanOrder = 0;
+            roomProp.cleanRepeart = 0;
+            roomProp.mopRepeat = 0;
+            roomProp.colorOrder = -1;
+            roomProp.donotSweep = 0;
+            roomProp.donotMop = 0;
+            roomProp.fanPower = 0xff;
+            roomProp.waterLevel = 0xff;
+            roomProp.enableYMop = 0xff;
+        }
+    }
+    TuyaMap map = ToTuyaMap(nowAppMap);
+    SaveTuyaMap(map, "/tmp/crecord.bin");
+
+    std::string mapBin = "/tmp/crecord.bin";
     std::ifstream mapFile(mapBin, std::ios::binary);
     if (!mapFile.is_open())
     {
@@ -866,9 +905,14 @@ void TuyaComm::ReportAll()
     }
 
     // 全量地图数据 机器电量、边刷、滚刷、滤网寿命 音量设置等
+    LOGD(TAG, "ReportStatus ---------------------------------");
     ReportStatus();
+    LOGD(TAG, "ReportDeviceInfo ---------------------------------");
     ReportDeviceInfo();
+    LOGD(TAG, "ReportPartsLife ---------------------------------");
     ReportPartsLife();
+    LOGD(TAG, "ReportCleanInfo ---------------------------------");
     ReportCleanInfo();
+    LOGD(TAG, "ReportMapAll ---------------------------------");
     ReportMapAll();
 }

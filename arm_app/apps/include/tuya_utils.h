@@ -23,7 +23,7 @@ int MarsYToTuya(Point p);
 bool TuyaLoadKey(const char *path, std::string &id, std::string &uuid, std::string &authKey);
 bool SoftVersion(const char *path, std::string &soft_version, std::string &mcu_version, std::string &system_version);
 bool UpdateSoftVersion(const char *path, const std::string &soft_version, const std::string &mcu_version, const std::string &system_version);
-// 版本格式:xx.xx.xx ,version1 > version2 返回1, version1 < version2 返回-1,其他返回0
+// 版本格式:xx.xx.xx ,version1 > version2 返回 1, version1 < version2 返回 -1，其他返回 0
 int CompareVersion(const std::string &version1, const std::string &version2);
 uint8_t PixelToTuyaPixel(int8_t p);
 uint8_t Combine4Pixel(const int8_t *pix, int len);

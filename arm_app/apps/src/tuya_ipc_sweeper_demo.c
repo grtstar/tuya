@@ -106,7 +106,7 @@ INT_T tuya_ipc_sweeper_album_cb(IN CONST TRANSFER_EVENT_E event, IN CONST PVOID_
             printf("%d = [%d]\n", i, g_file_arr[i]);
         }
         
-        tuya_ipc_sweeper_convert_file_info(g_file_arr, &(pSrcType->pIndexFile), &(pSrcType->fileLen)); // notice: ����ָ�룬SDK�ڲ������ڴ桢�ڲ��ͷ�
+        tuya_ipc_sweeper_convert_file_info(g_file_arr, &(pSrcType->pIndexFile), &(pSrcType->fileLen)); // notice: ����ָ�룬 SDK�ڲ������ڴ桢�ڲ��ͷ�
 
         C2C_ALBUM_INDEX_HEAD *head = pSrcType->pIndexFile;
         C2C_ALBUM_INDEX_ITEM *item = head->itemArr;
@@ -316,6 +316,7 @@ void* thread_album_send(void* arg)
                     }
 
                     ret = tuya_ipc_sweeper_send_data_with_buff(pSweeper->session_id, fileType, strFileInfo.len, strFileInfo.buff);
+                    printf("tuya_ipc_sweeper_send_data_with_buff ret %d\n", ret);
                     if (0 == ret) {
                         pSweeper->fileIndex[fileType]++;
                     }

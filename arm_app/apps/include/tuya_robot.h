@@ -109,11 +109,11 @@ public:
         Timer deviceInfoTimer(300000);
         while(true)
         {
-            if(deviceInfoTimer.IsTimeOut())
-            {
-                ReportDeviceInfo();
-                deviceInfoTimer.Reset();
-            }
+            // if(deviceInfoTimer.IsTimeOut())
+            // {
+            //     ReportDeviceInfo();
+            //     deviceInfoTimer.Reset();
+            // }
             HandleTimeout(1);
         }
     }
