@@ -919,7 +919,14 @@ bool bt_start()
     {
         return true;
     }
-    system("bt_init.sh");
+    if(access("/data/xd/bluetooth/bt_init.sh", F_OK) == 0)
+    {
+        system("/data/xd/bluetooth/bt_init.sh");
+    }
+    else
+    {
+        system("bt_init.sh");
+    }
     for(int i=0; i<100; i++)
     {
         if(check_hci0_exists())

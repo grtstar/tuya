@@ -121,103 +121,103 @@ TuyaStatus MarsStatusToTuya(int status)
     return (TuyaStatus)v;
 }
 
-int TuyaSuctionToMars(TuyaSuction suction)
-{
-    int v = PWR_CLOSED;
-    switch (suction)
-    {
-    case DP9_CLOSED:
-        v = PWR_CLOSED;
-        break;
-    case DP9_GENTLE:
-        v = PWR_SOFT;
-        break;
-    case DP9_NORMAL:
-        v = PWR_NORMAL;
-        break;
-    case DP9_STRONG:
-        v = PWR_STRONG;
-        break;
-    case DP9_MAX:
-        v = PWR_MAX;
-        break;
-    default:
-        break;
-    }
-    return v;
-}
+// int TuyaSuctionToMars(TuyaSuction suction)
+// {
+//     int v = PWR_CLOSED;
+//     switch (suction)
+//     {
+//     case DP9_CLOSED:
+//         v = PWR_CLOSED;
+//         break;
+//     case DP9_GENTLE:
+//         v = PWR_SOFT;
+//         break;
+//     case DP9_NORMAL:
+//         v = PWR_NORMAL;
+//         break;
+//     case DP9_STRONG:
+//         v = PWR_STRONG;
+//         break;
+//     case DP9_MAX:
+//         v = PWR_MAX;
+//         break;
+//     default:
+//         break;
+//     }
+//     return v;
+// }
 
-TuyaSuction MarsSuctionToTuya(int suction)
-{
-    TuyaSuction v = DP9_CLOSED;
-    switch (suction)
-    {
-    case PWR_CLOSED:
-        v = DP9_CLOSED;
-        break;
-    case PWR_SOFT:
-        v = DP9_GENTLE;
-        break;
-    case PWR_NORMAL:
-        v = DP9_NORMAL;
-        break;
-    case PWR_STRONG:
-        v = DP9_STRONG;
-        break;
-    case PWR_MAX:
-        v = DP9_MAX;
-        break;
-    default:
-        break;
-    }
-    return v;
-}
+// TuyaSuction MarsSuctionToTuya(int suction)
+// {
+//     TuyaSuction v = DP9_CLOSED;
+//     switch (suction)
+//     {
+//     case PWR_CLOSED:
+//         v = DP9_CLOSED;
+//         break;
+//     case PWR_SOFT:
+//         v = DP9_GENTLE;
+//         break;
+//     case PWR_NORMAL:
+//         v = DP9_NORMAL;
+//         break;
+//     case PWR_STRONG:
+//         v = DP9_STRONG;
+//         break;
+//     case PWR_MAX:
+//         v = DP9_MAX;
+//         break;
+//     default:
+//         break;
+//     }
+//     return v;
+// }
 
-TuyaCistern MarsCisternToTuya(int cistern)
-{
-    TuyaCistern v = DP10_CLOSED;
-    switch (cistern)
-    {
-    case PWR_CLOSED:
-        v = DP10_CLOSED;
-        break;
-    case PWR_SOFT:
-        v = DP10_LOW;
-        break;
-    case PWR_NORMAL:
-        v = DP10_MIDDLE;
-        break;
-    case PWR_STRONG:
-        v = DP10_HIGH;
-        break;
-    default:
-        break;
-    }
-    return v;
-}
+// TuyaCistern MarsCisternToTuya(int cistern)
+// {
+//     TuyaCistern v = DP10_CLOSED;
+//     switch (cistern)
+//     {
+//     case PWR_CLOSED:
+//         v = DP10_CLOSED;
+//         break;
+//     case PWR_SOFT:
+//         v = DP10_LOW;
+//         break;
+//     case PWR_NORMAL:
+//         v = DP10_MIDDLE;
+//         break;
+//     case PWR_STRONG:
+//         v = DP10_HIGH;
+//         break;
+//     default:
+//         break;
+//     }
+//     return v;
+// }
 
-int TuyaCisternToMars(TuyaCistern cistern)
-{
-    int v = PWR_CLOSED;
-    switch (cistern)
-    {
-    case DP10_CLOSED:
-        v = PWR_CLOSED;
-        break;
-    case DP10_LOW:
-        v = PWR_SOFT;
-        break;
-    case DP10_MIDDLE:
-        v = PWR_NORMAL;
-        break;
-    case DP10_HIGH:
-        v = PWR_STRONG;
-        break;
-    default:
-        break;
-    }
-    return v;
-}
+// int TuyaCisternToMars(TuyaCistern cistern)
+// {
+//     int v = PWR_CLOSED;
+//     switch (cistern)
+//     {
+//     case DP10_CLOSED:
+//         v = PWR_CLOSED;
+//         break;
+//     case DP10_LOW:
+//         v = PWR_SOFT;
+//         break;
+//     case DP10_MIDDLE:
+//         v = PWR_NORMAL;
+//         break;
+//     case DP10_HIGH:
+//         v = PWR_STRONG;
+//         break;
+//     default:
+//         break;
+//     }
+//     return v;
+// }
 
 TuyaWorkMode MarsCleanMethodToTuya(CleanMethod method)
 {

@@ -1,5 +1,6 @@
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -10,12 +11,9 @@
 #include <mars_message/OtaMsg.hpp>
 #include <mars_message/OtaAck.hpp>
 #include <mars_message/Event.hpp>
-
-#include "tuya_ipc_media.h"
-#include "tuya_cloud_com_defs.h"
-#include "tuya_cloud_types.h"
-#include "tuya_ipc_p2p.h"
-#include "tuya_iot_sweeper_api.h"
+#include "utils/json.hpp"
+#include "utils/shell.hpp"
+#include "utils/log_.h"
 
 #include "tuya_ipc_media_demo.h"
 #include "tuya_ipc_sweeper_demo.h"
@@ -23,9 +21,16 @@
 #include "tuya_robot.h"
 #include "utils/json.hpp"
 #include "utils/shell.hpp"
-//#include "utils/log_.h"
+#include "utils/log_.h"
 #include "voice.h"
 #include "tuya_utils.h"
+
+#include "uni_time.h"
+#include "tuya_ipc_media.h"
+#include "tuya_cloud_com_defs.h"
+#include "tuya_cloud_types.h"
+#include "tuya_ipc_p2p.h"
+#include "tuya_iot_sweeper_api.h"
 
 extern void TuyaHandleDPQuery(int dpId);
 extern void TuyaHandleRawDPCmd(int dpId, uint8_t *data, int len);
@@ -441,33 +446,68 @@ STATIC VOID tuya_ipc_sdk_net_status_change_cb(IN CONST BYTE_T stat)
 
 }
 
+bool SyncTime()
+{
+    //同步服务器时间
+    TIME_T time_utc;
+    struct tm time_local;
+    INT_T time_zone;
+    int ret = tuya_ipc_get_service_time_force(&time_utc, &time_zone);
+    if(ret != OPRT_OK) {
+        LOGE("OPS", "get time error");
+        return false;
+    }
+    tuya_ipc_get_local_time(time_utc, &time_local);
+    time_t t;
+    time_local.tm_year -= 1900; // year since 1900
+    time_local.tm_mon -= 1; // month since January
+    t = mktime(&time_local);
+    if(t == -1)
+    {
+        t = time_utc;
+    }
+    char cmd[256] = {0};
+    // 设置系统时间
+    LOGD("OPS", "time_utc:{}, time_zone:{}", time_utc, time_zone);
+    LOGD("OPS", "time local:{} {}-{}-{} {:02d}:{:02d}:{:02d} is_in_sun:{}", t,  
+        time_local.tm_year + 1900, time_local.tm_mon + 1, time_local.tm_mday, time_local.tm_hour, time_local.tm_min, time_local.tm_sec, uni_is_in_sum_zone(t));
+  
+    struct timeval tv;
+    tv.tv_sec = t;
+    tv.tv_usec = 0;
+    settimeofday(&tv, NULL);
+    return true;
+}
 
 //DOTO:线程处理完，则退出了。如果是设备离线，再上线，开启过的功能，是否需要重新上线。线程是否要退出？
 STATIC VOID* tuya_ipc_sdk_mqtt_online_proc(PVOID_T arg)
 {
-    PR_DEBUG("tuya_ipc_sdk_mqtt_online_proc thread start success\n");
-    while(s_mqtt_online_status == FALSE) {
+    LOGD("OPS", "tuya_ipc_sdk_mqtt_online_proc thread start success");
+    for(int i=0; i<20; i++)
+    {
+        if(s_mqtt_online_status)
+        {
+            break;
+        }
         sleep(1);
     }
-    PR_DEBUG("tuya_ipc_sdk_mqtt_online_proc is start run\n");
-    int ret;
+    LOGD("OPS", "tuya_ipc_sdk_mqtt_online_proc is start run");
     //同步服务器时间
-    TIME_T time_utc;
-    INT_T time_zone;
-    do{
-        ret = tuya_ipc_get_service_time_force(&time_utc, &time_zone);
-    } while(ret != OPRT_OK);
+    for(int i=0; i<1000; i++) 
+    {
+        if(SyncTime()) {
+            break;
+        }
+        sleep(1);
+    }
 
-    char cmd[256] = {0};
-    // 设置系统时间
-    printf("time_utc:%ld, time_zone:%d\n", time_utc, time_zone);
-    snprintf(cmd, 256, "date -s @%ld", time_utc + time_zone);
-    system(cmd);
-    // 设置系统时区
-    // char tz_cmd[64];
-    // snprintf(tz_cmd, sizeof(tz_cmd), "timedatectl set-timezone Etc/GMT%+d", -time_zone);
-    // system(tz_cmd);
-
+    // 创建一个线程，每 6 个小时同步一次时间
+    std::thread([]() {
+        while (true) {
+            sleep(6 * 60 * 60); // 每 6 个小时同步一次时间
+            SyncTime();
+        }
+    }).detach();  
 
     tuya_ipc_sdk_p2p_init();            // 初始化 p2p
 //    IPC_APP_upload_all_status();        // 上传支持的 dp 点信息

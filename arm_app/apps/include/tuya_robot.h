@@ -69,6 +69,7 @@ public:
         lcm_->subscribe("ty_CleanInfo", &TuyaComm::OnCleanInfo, this);
         lcm_->subscribe("ty_SaveMap", &TuyaComm::OnSaveMap, this);
         lcm_->subscribe("ty_UpdateMap", &TuyaComm::OnUpdateMap, this);
+        lcm_->subscribe("ty_report_spot", &TuyaComm::OnReportSpot, this);
         lcm_->subscribe("Mevt", &TuyaComm::OnEvent, this);
         lcm_->subscribe("Kevt", &TuyaComm::OnEvent, this);
     }
@@ -138,6 +139,7 @@ public:
     void OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const Event *msg);
     void OnSaveMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
     void OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
+    void OnReportSpot(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppSpotClean *msg);
 public:
     void ReportStatus();
     void ReportDeviceInfo();

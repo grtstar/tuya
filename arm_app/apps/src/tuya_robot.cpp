@@ -378,10 +378,8 @@ void TuyaReportStatus(tuya_message::RobotState status)
 
     for(int i=0; i<dps.size(); i++)
     {
-    dev_report_dp_json_async(NULL, &dps[i], 1);
-
+        dev_report_dp_json_async(NULL, &dps[i], 1);
     }
-
  
 }
 
@@ -622,6 +620,11 @@ void TuyaComm::OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &ch
     int tuyaMapId = msg->b;
     TuyaUpdateMapFile(mapId, tuyaMapId);
 }
+void TuyaComm::OnReportSpot(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppSpotClean *msg)
+{
+    LOGD(TAG, "OnReportSpot: {}", msg->version);
+    TuyaReportSpotClean(GetRawDpId(DPRaw_HandleCommand), msg->version==0?0x17:0x3F, (AppSpotClean *)msg);
+}
 
 void TuyaComm::ReportPartsLife()
 {
@@ -819,6 +822,16 @@ void TuyaComm::ReportMapAll()
     {
         LOGE(TAG, "无法获取到划区信息");
     }
+
+    // AppSpotClean sc;
+    // if (TuyaComm::Get()->Send("ty_get_spot", &req, &sc))
+    // {
+    //     TuyaReportSpotClean(GetRawDpId(DPRaw_HandleCommand), 0x17, &sc);
+    // }
+    // else
+    // {
+    //     LOGE(TAG, "无法获取到定点清扫信息");
+    // }
 
     AppRoomClean room;
     if(Send("ty_get_clean_blocks", &req, &room) && room.count > 0)

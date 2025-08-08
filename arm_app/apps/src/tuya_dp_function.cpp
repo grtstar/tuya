@@ -317,6 +317,7 @@ TY_OBJ_DP_S DP_ReportDirectionControl(int dpId, int direction)
 void DP_HandleDirectionControl(TY_OBJ_DP_S *dp)
 {
     int direction = dp->value.dp_enum;
+    LOGD(TAG, "direction = {}", direction);
     switch(direction)
     {
         case 0:
@@ -376,7 +377,8 @@ void DPRaw_HandleCommand(int dpId, uint8_t *data, int len)
 
 void DPRaw_Send(int dpId, uint8_t *data, int len, int timeoutMs)
 {
-    dev_report_dp_raw_sync(NULL, dpId, (const uint8_t *)data, len, timeoutMs);
+    int r = dev_report_dp_raw_sync(NULL, dpId, (const uint8_t *)data, len, timeoutMs);
+    LOGD(TAG, "DPRaw_Send r = {}", r);
 }
 
 void DP_HandleRequest(TY_OBJ_DP_S *dp)
@@ -1229,7 +1231,11 @@ std::vector<uint8_t> ToVirtualWallData(uint8_t cmd, AppVirtualWall *msg)
     raw.push_back(cmd);
     if (msg->version == 0)
     {
-        // LOGD(TAG, "上报虚拟墙设置 v1.0.0");
+        LOGD(TAG, "上报虚拟墙设置 v1.0.0");
+        if(msg->count > 10)
+        {
+            msg->count = 0;
+        }
         raw.push_back(msg->count);
         for (int i = 0; i < msg->count; i++)
         {
@@ -1253,9 +1259,11 @@ std::vector<uint8_t> ToVirtualWallData(uint8_t cmd, AppVirtualWall *msg)
             sum += raw[i];
         }
         raw.push_back(sum);
+        LOGD(TAG, "Data: {}", spdlog::to_hex(raw.begin(), raw.end()));
     }
     if (msg->version == 1)
     {
+        LOGD(TAG, "上报虚拟墙设置 v1.1.0");
     }
     return raw;
 }
@@ -1274,7 +1282,7 @@ std::vector<uint8_t> ToRestrictedAreaData(uint8_t cmd, AppRestrictedArea *msg)
     raw.push_back(0x00);
     raw.push_back(cmd);
 
-    LOGD(TAG, "msg->version = {}", msg->version);
+    LOGD(TAG, "msg->version = {}, count = {}", msg->version, msg->count);
     if (msg->version == 0)
     {
         LOGD(TAG, "上报禁区设置 v1.1.0");
@@ -1301,7 +1309,7 @@ std::vector<uint8_t> ToRestrictedAreaData(uint8_t cmd, AppRestrictedArea *msg)
         }
         raw.push_back(sum);
 
-        // LOGD(TAG, "Data: {}", spdlog::to_hex(raw.begin(), raw.end()));
+        LOGD(TAG, "Data: {}", spdlog::to_hex(raw.begin(), raw.end()));
     }
     if (msg->version == 1)
     {
@@ -1391,7 +1399,7 @@ void TuyaReportSpotClean(int dpId, uint8_t cmd, AppSpotClean *msg)
     raw.push_back(0x00);
     raw.push_back(0x00);
     raw.push_back(cmd);
-    if (msg->version == 0)
+    if (msg->version == 0 || cmd == 0x17)
     {
         LOGD(TAG, "上报定点清扫 v1.0.0");
         int x = MarsXToTuya(msg->spot);
@@ -1401,9 +1409,20 @@ void TuyaReportSpotClean(int dpId, uint8_t cmd, AppSpotClean *msg)
         d = tonb16(y);
         raw.insert(raw.end(), d.begin(), d.end());
     }
-    if (msg->version == 1)
+    else if (msg->version == 1)
     {
         LOGD(TAG, "上报定点清扫 v1.1.0");
+        raw.push_back(0x1);
+        raw.push_back(msg->mode);
+        raw.push_back(msg->suction);
+        raw.push_back(msg->cistern);
+        raw.push_back(msg->cleanRepeat);
+        int x = MarsXToTuya(msg->spot);
+        int y = MarsYToTuya(msg->spot);
+        auto d = tonb16(x);
+        raw.insert(raw.end(), d.begin(), d.end());
+        d = tonb16(y);
+        raw.insert(raw.end(), d.begin(), d.end());
     }
     raw[2] = raw.size() - 3;
     uint8_t sum = 0;
@@ -1888,7 +1907,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
         switch (data[3])
         {
         case 0x12: // 虚拟墙设置 v1.0.0
-        case 0x13:
+        
             LOGD(TAG, "虚拟墙设置 v1.0.0");
             {
                 AppVirtualWall wall;
@@ -1910,8 +1929,25 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 }
             }
             break;
-        case 0x48:
-        case 0x49: // 虚拟墙设置 v1.1.0
+        case 0x13: // 查询虚拟墙设置
+        {
+            // 获取虚拟墙数据
+            AppVirtualWall wall;
+            std::vector<uint8_t> tuyaVirtualWall;
+            wall.version = 0;
+            wall.count = 0;
+            tuya_message::Request req = {};
+            if (TuyaComm::Get()->Send("ty_get_virtual_wall", &req, &wall) && wall.version >= 0)
+            {
+                tuyaVirtualWall = ToVirtualWallData(wall.version == 0 ? 0x13 : 0x49, &wall);
+            }
+            else
+            {
+                LOGE(TAG, "无法获取到虚拟墙信息");
+            }
+        }
+        break;
+        case 0x48: // 虚拟墙设置 v1.1.0
             LOGD(TAG, "虚拟墙设置 v1.1.0");
             {
                 AppVirtualWall wall;
@@ -1933,6 +1969,11 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 }
             }
             break;
+        case 0x49: // 查询虚拟墙设置
+        {
+            LOGD(TAG, "查询虚拟墙设置 v1.1.0");
+        }
+        break;
         case 0x14: // 选区清扫
             LOGD(TAG, "选区清扫");
             {
@@ -1972,7 +2013,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x16: // 定点清扫 v1.0.0
-        case 0x17:
             LOGD(TAG, "定点清扫 v1.0.0");
             {
                 // LOGD(TAG, "{}", spdlog::to_hex(data, data + len));
@@ -1990,16 +2030,45 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 }
             }
             break;
+        case 0x17:  // 查询定点清扫
+            LOGD(TAG, "查询定点清扫 v1.0.0");
+            {
+                tuya_message::Request req = {};
+                AppSpotClean sc;
+                if (TuyaComm::Get()->Send("ty_get_spot", &req, &sc))
+                {
+                    TuyaReportSpotClean(dpId, 0x17, &sc);
+                }
+                else
+                {
+                    LOGE(TAG, "无法获取到定点清扫信息");
+                }
+            }
+            break;
+        case 0x3F: // 查询定点清扫
+            LOGD(TAG, "查询定点清扫 v1.1.0");
+            {
+                tuya_message::Request req = {};
+                AppSpotClean sc;
+                if (TuyaComm::Get()->Send("ty_get_spot", &req, &sc))
+                {
+                    TuyaReportSpotClean(dpId, 0x3F, &sc);
+                }
+                else
+                {
+                    LOGE(TAG, "无法获取到定点清扫信息");
+                }
+            }
+            break;
         case 0x3E: // 定点清扫 v1.1.0
-        case 0x3F:
             LOGD(TAG, "定点清扫 v1.1.0");
             {
-                int mode = data[6];
-                int suction = data[7];
-                int cistern = data[8];
-                int count = data[9];
-                int x = nbto16(&data[10]);
-                int y = nbto16(&data[12]);
+                int mode = data[5];
+                int suction = data[6];
+                int cistern = data[7];
+                int count = data[8];
+                int x = nbto16(&data[9]);
+                int y = nbto16(&data[11]);
                 LOGD(TAG, "mode:{},suction:{},cistern:{},count:{},x:{},y:{}",
                      mode, suction, cistern, count, x, y);
                 AppSpotClean sc;
@@ -2018,39 +2087,40 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
 
             break;
         case 0x1A: // 禁区设置 v1.1.0
-        case 0x1B:
             LOGD(TAG, "禁区设置 v1.1.0");
             {
                 AppRestrictedArea area;
                 area.version = 0;
                 area.count = data[4];
-                uint8_t *start = &data[5];
-                for (int i = 0; i < area.count; i++)
+                if(area.count <= 14)
                 {
-                    area.mode.push_back(*start++);
-                    area.type.push_back(0);
-                    area.name.push_back("");
-                    Polygon polygon;
-                    polygon.count = *start++;
-                    for (int j = 0; j < polygon.count; j++)
+                    uint8_t *start = &data[5];
+                    for (int i = 0; i < area.count; i++)
                     {
-                        int x = nbto16(start);
-                        start += 2;
-                        int y = nbto16(start);
-                        start += 2;
-                        polygon.vetex.push_back(TuyaXYToMars(x, y));
+                        area.mode.push_back(*start++);
+                        area.type.push_back(0);
+                        area.name.push_back("");
+                        Polygon polygon;
+                        polygon.count = *start++;
+                        for (int j = 0; j < polygon.count; j++)
+                        {
+                            int x = nbto16(start);
+                            start += 2;
+                            int y = nbto16(start);
+                            start += 2;
+                            polygon.vetex.push_back(TuyaXYToMars(x, y));
+                        }
+                        area.polygon.emplace_back(polygon);
                     }
-                    area.polygon.emplace_back(polygon);
-                }
-                tuya_message::Result res;
-                if (TuyaComm::Get()->Send("ty_restricted_area", &area, &res))
-                {
-                    TuyaReportRestrictedArea(dpId, 0x1B, &area);
+                    tuya_message::Result res;
+                    if (TuyaComm::Get()->Send("ty_restricted_area", &area, &res))
+                    {
+                        TuyaReportRestrictedArea(dpId, 0x1B, &area);
+                    }
                 }
             }
             break;
         case 0x38: // 禁区设置 v1.2.0/1
-        case 0x39:
         {
             AppRestrictedArea area;
             area.version = data[4];
@@ -2101,7 +2171,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
         }
         break;
         case 0x1C: // 分区分割
-        case 0x1D:
             LOGD(TAG, "分区分割");
             {
                 AppPartitionDivision partition_division;
@@ -2128,7 +2197,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x1E: // 分区合并
-        case 0x1F:
             LOGD(TAG, "分区合并");
             {
                 AppPartitionMerge partition_merge;
@@ -2146,7 +2214,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x20: // 分区恢复默认
-        case 0x21:
             LOGD(TAG, "分区恢复默认");
             {
                 tuya_message::Request req;
@@ -2158,7 +2225,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x22: // 设置房间属性
-        case 0x23:
             LOGD(TAG, "设置房间属性");
             {
                 AppSetRoomProperties room_properties;
@@ -2184,7 +2250,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x24: // 设置房间名称
-        case 0x25:
         {
             LOGD(TAG, "设置房间名称");
             AppSetRoomName room_info;
@@ -2212,7 +2277,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
         }
         break;
         case 0x26: // 设置清扫顺序
-        case 0x27:
             LOGD(TAG, "设置清扫顺序");
             {
                 AppSetCleaningSequence clean_sequence;
@@ -2231,7 +2295,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x28: // 划区清扫 v1.1.0
-        case 0x29:
             LOGD(TAG, "划区清扫 v1.1.0");
             {
                 AppZoneClean zone;
@@ -2293,7 +2356,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x3A: // 划区清扫 v1.2.0/1/2
-        case 0x3B:
         {
             AppZoneClean zone;
             zone.version = data[4];
@@ -2431,7 +2493,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
         }
         break;
         case 0x30: // 本地定时功能 v1.0.0
-        case 0x31:
             LOGD(TAG, "本地定时功能 v1.0.0");
             {
                 AppLocalAlert alert;
@@ -2476,7 +2537,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x44: // 本地定时功能 v1.1.0
-        case 0x45:
             LOGD(TAG, "本地定时功能 v1.1.0");
             {
                 AppLocalAlert alert;
@@ -2533,7 +2593,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x32: // 勿扰时间设置 v1.0.0
-        case 0x33:
             LOGD(TAG, "勿扰时间设置 v1.0.0");
             {
                 AppNotDisturbTime time;
@@ -2559,7 +2618,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x40: // 勿扰时间设置 v1.1.0
-        case 0x41:
             LOGD(TAG, "勿扰时间设置 v1.1.0");
             {
                 AppNotDisturbTime time;
@@ -2585,11 +2643,9 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x36: // AI 物体识别上报
-        case 0x37:
             LOGD(TAG, "AI 物体识别上报");
             break;
         case 0x3C: // 快速建图
-        case 0x3D:
             LOGD(TAG, "快速建图");
             {
                 tuya_message::Request req;
@@ -2605,7 +2661,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x42: // 重置当前地图
-        case 0x43:
             LOGD(TAG, "重置当前地图");
             {
                 tuya_message::Request req = {0};
@@ -2621,7 +2676,6 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             break;
         case 0x46: // 基站控制设置
-        case 0x47:
             LOGD(TAG, "基站控制设置");
             break;
         case 0x99: // 获取所有配置 (预留)
@@ -2666,7 +2720,7 @@ int TuyaUploadMapFile2(int currId, uint32_t & tuyaMapId, bool update)
     // 获取当前地图文件
     tuya_message::Request req = {0};
     mars_message::AppMap map;
-    if (TuyaComm::Get()->Send("ty_get_map", &req, &map))
+    if (TuyaComm::Get()->Send("ty_get_map", &req, &map, 2000))
     {
         TuyaMap tuya = ToTuyaMap(map);
         SaveTuyaMap(tuya, "/tmp/map.bin");
@@ -2978,17 +3032,22 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
 #ifdef ALL_CLOUD_MAP
         // 如果是全云端版本，保存地图时只需将本地地图全部传到云端
         {
-            uint32_t tuyaMapId;
-            int ret = TuyaUploadMapFile(0, tuyaMapId); // 上传地图文件
-            if (ret == 0)
+            tuya_message::Request req = {0};
+            tuya_message::Result res;
+            if (TuyaComm::Get()->Send("ty_save_map", &req, &res, 1000) && res.code == 0)
             {
-                LOGD(TAG, "保存成功");
-                TuyaReportMapSaveResult(dpId, 0x2B, 0x01); // ret：0x00 保存失败、0x01 保存成功、0x02：本地空间已满
-            }
-            else
-            {
-                LOGD(TAG, "保存失败");
-                TuyaReportMapSaveResult(dpId, 0x2B, 0x00);
+                uint32_t tuyaMapId;
+                int ret = TuyaUploadMapFile(0, tuyaMapId); // 上传地图文件
+                if (ret == 0)
+                {
+                    LOGD(TAG, "保存成功");
+                    TuyaReportMapSaveResult(dpId, 0x2B, 0x01); // ret：0x00 保存失败、0x01 保存成功、0x02：本地空间已满
+                }
+                else
+                {
+                    LOGD(TAG, "保存失败");
+                    TuyaReportMapSaveResult(dpId, 0x2B, 0x00);
+                }
             }
         }
 #else
@@ -3169,7 +3228,6 @@ void TuyaHandleExtentedFuction(int dpId, uint8_t *data, int len)
                     return;
                 }
             }
-            return;
         }
 
         std::string file_name;

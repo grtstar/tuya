@@ -29,6 +29,7 @@
 
 int _wifiMode = 0;
 char _ssid[128] = {0};
+char _passwd[128] = {0};
 
 static void exec_cmd(char *pCmd)
 {
@@ -773,6 +774,7 @@ OPERATE_RET tuya_adapter_wifi_fast_station_connect_v2(CONST FAST_WF_CONNECTED_AP
     return 0;
 }
 
+
 OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CHAR_T *passwd)
 {
     LOGF;
@@ -803,6 +805,7 @@ OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CH
 
     // Add a blocking operation for the wifi connection here.
     strncpy(_ssid, ssid, sizeof(_ssid));
+    strncpy(_passwd, passwd, sizeof(_passwd));
 #endif
 #ifdef RK_DEVICEIO
     RK_wifi_enable(1);
@@ -828,8 +831,6 @@ OPERATE_RET tuya_adapter_wifi_station_connect(IN CONST CHAR_T *ssid, IN CONST CH
     if(WMG_STATUS_SUCCESS != r)
     {
         printf("wifi_sta_connect failed: %d\n", r);
-        r = wifi_sta_auto_reconnect(1);
-        printf("wifi_sta_auto_reconnect: %d\n", r);
         return OPRT_COM_ERROR;
     }
 #endif
@@ -1031,6 +1032,7 @@ OPERATE_RET tuya_adapter_wifi_station_get_status(OUT WF_STATION_STAT_E *stat)
         if(count++ == 20)
         {
             wifi_sta_auto_reconnect(1);
+            tuya_adapter_wifi_station_connect(_ssid, _passwd);
             count = 0;
         }
         *stat = WSS_IDLE;
