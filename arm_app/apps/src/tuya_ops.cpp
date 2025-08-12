@@ -468,7 +468,7 @@ bool SyncTime()
     }
     char cmd[256] = {0};
     // 设置系统时间
-    LOGD("OPS", "time_utc:{}, time_zone:{}", time_utc, time_zone);
+    LOGD("OPS", "time_utc:{}, t: {}, time_zone:{}", time_utc, t, time_zone);
     LOGD("OPS", "time local:{} {}-{}-{} {:02d}:{:02d}:{:02d} is_in_sun:{}", t,  
         time_local.tm_year + 1900, time_local.tm_mon + 1, time_local.tm_mday, time_local.tm_hour, time_local.tm_min, time_local.tm_sec, uni_is_in_sum_zone(t));
   
@@ -483,7 +483,7 @@ bool SyncTime()
 STATIC VOID* tuya_ipc_sdk_mqtt_online_proc(PVOID_T arg)
 {
     LOGD("OPS", "tuya_ipc_sdk_mqtt_online_proc thread start success");
-    for(int i=0; i<20; i++)
+    for(;;)
     {
         if(s_mqtt_online_status)
         {

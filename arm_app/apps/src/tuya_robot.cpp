@@ -232,10 +232,11 @@ int GetDpId(void (*dpHanlder)(TY_OBJ_DP_S*))
     return 0;
 }
 
-
+extern BOOL_T s_mqtt_online_status;
 void TuyaHandleDPCmd(TY_OBJ_DP_S *dp)
 {
     LOGD(TAG, "DP cmd: {}", dp->dpid);
+    s_mqtt_online_status = true;
     for(int i=0; i<sizeof(_dpHandler)/sizeof(_dpHandler[0]); i++)
     {
         if(dp->dpid == _dpHandler[i].dpId)
