@@ -461,9 +461,11 @@ bool SyncTime()
     time_t t;
     time_local.tm_year -= 1900; // year since 1900
     time_local.tm_mon -= 1; // month since January
+    time_local.tm_isdst = -1; // let mktime determine whether DST is in effect
     t = mktime(&time_local);
     if(t == -1)
     {
+        LOGD(TAG, "mktime failed\n");
         t = time_utc;
     }
     char cmd[256] = {0};

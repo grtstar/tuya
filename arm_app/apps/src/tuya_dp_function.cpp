@@ -2249,7 +2249,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 }
             }
             break;
-        case 0x24: // 设置房间名称
+        case 0x24: // 设置房间名称，修改两个房间没有返回 0x25
         {
             LOGD(TAG, "设置房间名称");
             AppSetRoomName room_info;
@@ -2276,7 +2276,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
         }
         break;
-        case 0x26: // 设置清扫顺序
+        case 0x26: // 设置清扫顺序，需要上报地图数据
             LOGD(TAG, "设置清扫顺序");
             {
                 AppSetCleaningSequence clean_sequence;
