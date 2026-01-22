@@ -465,7 +465,7 @@ bool SyncTime()
     t = mktime(&time_local);
     if(t == -1)
     {
-        LOGD(TAG, "mktime failed\n");
+        LOGD("OPS", "mktime failed\n");
         t = time_utc;
     }
     char cmd[256] = {0};

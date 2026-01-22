@@ -62,6 +62,7 @@ public:
         lcm_->subscribe("ty_RestrictedArea", &TuyaComm::OnRestrictedArea, this);
         lcm_->subscribe("ty_CleanRecord", &TuyaComm::OnCleanRecord, this);
         lcm_->subscribe("ty_m_schedule", &TuyaComm::OnSchedule, this);
+        lcm_->subscribe("ty_RoomClean", &TuyaComm::OnRoomClean, this);
 
         //lcm_->subscribe("APPCMD", &TuyaComm::OnCmd, this);
         lcm_->subscribe("ty_robot_state", &TuyaComm::OnSweeperStatus, this);
@@ -140,6 +141,7 @@ public:
     void OnSaveMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
     void OnUpdateMap(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const tuya_message::RobotEvent *msg);
     void OnReportSpot(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppSpotClean *msg);
+    void OnRoomClean(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const mars_message::AppRoomClean *msg);
 public:
     void ReportStatus();
     void ReportDeviceInfo();

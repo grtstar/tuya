@@ -1,4 +1,4 @@
-u#include <stdint.h>
+#include <stdint.h>
 #include <netinet/in.h>
 
 #include <vector>
@@ -580,6 +580,10 @@ void TuyaComm::OnEvent(const lcm::ReceiveBuffer *rbuf, const std::string &channe
     }
 }
 
+void TuyaComm::OnRoomClean(const lcm::ReceiveBuffer *rbuf, const std::string &channel, const AppRoomClean *msg)
+{
+    TuyaReportRoomClean(GetRawDpId(DPRaw_HandleCommand), 0x15, (AppRoomClean *)msg);
+}
 int TuyaUploadMapFile(int currId, uint32_t & tuyaMapId);
 int TuyaUpdateMapFile(int currId, uint32_t tuyaMapId);
 void TuyaReportMapSaveResult(int dpId, uint8_t cmd, uint8_t ret);

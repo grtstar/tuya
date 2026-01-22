@@ -1923,9 +1923,13 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                     wall.wall.push_back(Segment{TuyaXYToMars(x0, y0), TuyaXYToMars(x1, y1)});
                 }
                 tuya_message::Result res;
-                if (TuyaComm::Get()->Send("ty_virtual_wall", &wall, &res))
+                if (TuyaComm::Get()->Send("ty_virtual_wall", &wall, &res, 1000))
                 {
                     TuyaReportVirtualWall(dpId, 0x13, &wall);
+                }
+                else
+                {
+                    LOGE(TAG, "虚拟墙设置失败 v1.0.0");
                 }
             }
             break;
@@ -1943,7 +1947,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
             }
             else
             {
-                LOGE(TAG, "无法获取到虚拟墙信息");
+                LOGE(TAG, "无法获取到虚拟墙信息 0x13");
             }
         }
         break;
@@ -1992,6 +1996,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 tuya_message::Result res;
                 if (TuyaComm::Get()->Send("ty_clean_blocks", &room, &res))
                 {
+                    LOGD(TAG, "返回分区清扫信息");
                     TuyaReportRoomClean(dpId, 0x15, &room);
                 }
             }
@@ -2004,6 +2009,7 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 AppRoomClean room;
                 if(TuyaComm::Get()->Send("ty_get_clean_blocks", &req, &room) && room.count > 0)
                 {
+                    LOGD(TAG, "返回分区清扫信息");
                     TuyaReportRoomClean(dpId, 0x15, &room);
                 }
                 else
@@ -2260,6 +2266,10 @@ void TuyaHandleStandardFunction(int dpId, uint8_t *d, int len)
                 room_info.roomId.push_back(*start++);
                 std::string name;
                 int name_len = *start++;
+                if(name_len > 19)
+                {
+                    name_len = 19;
+                }
                 for (int j = 0; j < name_len; j++)
                 {
                     name.push_back(*(start + j));
